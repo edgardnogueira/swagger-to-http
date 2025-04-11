@@ -1,0 +1,92 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/security.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/security.yml'
+  schedule:
+    - cron: '0 0 * * 0'  # Run every Sunday at midnight UTC
+
+jobs:
+  scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      # Run gosec
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: '-no-fail -fmt sarif -out results.sarif ./...'
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: results.sarif
+          category: gosec
+
+      # Run dependency check
+      - name: Run dependency check
+        run: |
+          # Install nancy
+          go install github.com/sonatype-nexus-community/nancy@latest
+          # Check dependencies
+          go list -json -deps ./... | $HOME/go/bin/nancy sleuth -o json > nancy-results.json
+        continue-on-error: true
+
+      - name: Upload nancy results
+        uses: actions/upload-artifact@v3
+        with:
+          name: nancy-results
+          path: nancy-results.json
+          retention-days: 5
+
+      # Run govulncheck
+      - name: Run govulncheck
+        run: |
+          # Install govulncheck
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          # Run govulncheck and output to JSON
+          $HOME/go/bin/govulncheck -json ./... > govulncheck-results.json
+        continue-on-error: true
+
+      - name: Upload govulncheck results
+        uses: actions/upload-artifact@v3
+        with:
+          name: govulncheck-results
+          path: govulncheck-results.json
+          retention-days: 5
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v3
+        with:
+          fail-on-severity: critical
