@@ -122,7 +122,35 @@ Flags:
   -h, --help   help for snapshot
 ```
 
+
 For more detailed usage information, see the [Usage Guide](docs/usage.md).
+
+#### Snapshot Test Command
+
+```
+Usage:
+  swagger-to-http snapshot test [file-pattern]
+
+Flags:
+  --update string         Update mode: none, all, failed, missing (default "none")
+  --ignore-headers string Comma-separated headers to ignore in comparison (default "Date,Set-Cookie")
+  --snapshot-dir string   Directory for snapshot storage (default ".snapshots")
+  --fail-on-missing       Fail when snapshot is missing
+  --cleanup               Remove unused snapshots after testing
+  -h, --help              help for test
+```
+
+#### Snapshot Update Command
+
+```
+Usage:
+  swagger-to-http snapshot update [file-pattern]
+
+Flags:
+  --snapshot-dir string   Directory for snapshot storage (default ".snapshots") 
+  -h, --help              help for update
+```
+
 
 ## Configuration
 
@@ -149,6 +177,78 @@ snapshots:
   ignore_headers:
     - Date
     - Set-Cookie
+
+```
+
+## Snapshot Testing
+
+Snapshot testing allows you to:
+
+1. Execute HTTP requests in .http files
+2. Save responses as snapshots
+3. Compare future responses against stored snapshots
+4. Detect changes in API behavior
+
+### Creating Snapshots
+
+```bash
+# Create or update all snapshots
+swagger-to-http snapshot update "api/*.http"
+
+# Create specific snapshots
+swagger-to-http snapshot update "api/users.http"
+```
+
+### Running Tests
+
+```bash
+# Test all HTTP files
+swagger-to-http snapshot test "api/*.http"
+
+# Test specific files
+swagger-to-http snapshot test "api/users.http"
+
+# Update failed snapshots automatically
+swagger-to-http snapshot test --update failed "api/*.http"
+```
+
+### Update Modes
+
+- `none`: Do not update any snapshots (default)
+- `all`: Update all snapshots regardless of test result
+- `failed`: Update only snapshots that failed comparison
+- `missing`: Create snapshots only if they don't exist
+
+### Snapshot Formatters
+
+The snapshot system includes content-type aware formatters for:
+
+- JSON - Normalizes and prettifies JSON for reliable comparison
+- XML - Handles XML structure comparison
+- HTML - Compares HTML responses
+- Plain text - Basic text comparison
+- Binary data - Compares binary data with diff visualization
+
+### Ignoring Headers
+
+Some HTTP headers will change between requests (like timestamps). You can ignore specific headers:
+
+```bash
+swagger-to-http snapshot test --ignore-headers "Date,Set-Cookie,X-Request-ID" "api/*.http"
+```
+
+### Managing Snapshots
+
+```bash
+# List all snapshots
+swagger-to-http snapshot list
+
+# List snapshots in a specific directory
+swagger-to-http snapshot list api/users
+
+# Clean up unused snapshots
+swagger-to-http snapshot cleanup
+
 ```
 
 For more configuration options, see the [Configuration Guide](docs/configuration.md).
@@ -199,6 +299,7 @@ We provide various examples to help you get started:
 ## Project Status
 
 This project is in active development. The following features are implemented or planned:
+
 
 - [x] Basic Swagger/OpenAPI parsing
 - [x] HTTP file generation
