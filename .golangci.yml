@@ -1,0 +1,81 @@
+run:
+  timeout: 5m
+  skip-dirs:
+    - vendor
+    - test
+  skip-files:
+    - ".*_test\\.go$"
+
+linters:
+  disable-all: true
+  enable:
+    # Default linters
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    
+    # Additional linters
+    - bodyclose
+    - dupl
+    - exportloopref
+    - goconst
+    - gocyclo
+    - godot
+    - gofmt
+    - goimports
+    - gosec
+    - misspell
+    - prealloc
+    - revive
+    - stylecheck
+    - unconvert
+    - unparam
+    - whitespace
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  
+  govet:
+    check-shadowing: true
+    enable-all: true
+  
+  gosec:
+    excludes:
+      - G204  # Allow command execution
+  
+  gocyclo:
+    min-complexity: 15
+  
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+
+issues:
+  exclude-use-default: false
+  exclude:
+    - "should have comment"
+    - "comment on exported"
+  
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - dupl
+        - gosec
+        - gocyclo
+    
+    - path: cmd/
+      linters:
+        - gocyclo
+        - gosec
+
+  max-same-issues: 10
+  max-issues-per-linter: 20
+  fix: true
