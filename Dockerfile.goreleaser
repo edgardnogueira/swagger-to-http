@@ -1,0 +1,33 @@
+FROM alpine:3.19
+
+# Add necessary runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata && \
+    # Create non-root user for security
+    adduser -D -h /app appuser && \
+    # Create directory structure for application
+    mkdir -p /app/config /app/data && \
+    chown -R appuser:appuser /app
+
+# Set working directory
+WORKDIR /app
+
+# Copy the pre-built binary from GoReleaser
+COPY swagger-to-http /usr/local/bin/
+COPY LICENSE /app/LICENSE
+COPY README.md /app/README.md
+
+# Switch to non-root user
+USER appuser
+
+# Set environment variable for default config location
+ENV STH_CONFIG_PATH=/app/config
+
+# Create volume for persistency
+VOLUME /app/data
+
+# Expose documentation
+LABEL org.opencontainers.image.documentation="https://github.com/edgardnogueira/swagger-to-http"
+
+# Command to run
+ENTRYPOINT ["swagger-to-http"]
+CMD ["--help"]
