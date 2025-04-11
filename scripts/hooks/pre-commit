@@ -1,0 +1,79 @@
+#!/bin/sh
+#
+# Pre-commit hook that runs linting and ensures code quality
+# before allowing a commit to proceed.
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+# Check if this hook is disabled for this run
+if [ -n "$SKIP_GIT_HOOKS" ]; then
+  echo "${YELLOW}Git hooks skipped via SKIP_GIT_HOOKS env var${NC}"
+  exit 0
+fi
+
+# Get only staged Go files
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.go$')
+
+# Skip if no Go files are staged
+if [ -z "$STAGED_GO_FILES" ]; then
+  echo "${GREEN}No Go files staged, skipping Go linting${NC}"
+  exit 0
+fi
+
+# Check for go command
+if ! command -v go >/dev/null 2>&1; then
+  echo "${RED}Error: go command not found${NC}"
+  exit 1
+fi
+
+# Run gofmt
+echo "${YELLOW}Running gofmt...${NC}"
+UNFMT_FILES=$(echo "$STAGED_GO_FILES" | xargs -I{} gofmt -l {})
+if [ -n "$UNFMT_FILES" ]; then
+  echo "${RED}Error: The following files are not properly formatted:${NC}"
+  echo "$UNFMT_FILES"
+  echo "${YELLOW}Run 'gofmt -w <file>' to format these files${NC}"
+  exit 1
+fi
+echo "${GREEN}All staged Go files are properly formatted${NC}"
+
+# Check if golangci-lint is available
+if command -v golangci-lint >/dev/null 2>&1; then
+  echo "${YELLOW}Running golangci-lint...${NC}"
+  if ! golangci-lint run --fast ./...; then
+    echo "${RED}Error: golangci-lint found issues${NC}"
+    echo "${YELLOW}You can bypass this check with SKIP_GIT_HOOKS=1 git commit${NC}"
+    exit 1
+  fi
+  echo "${GREEN}golangci-lint passed${NC}"
+else
+  echo "${YELLOW}Warning: golangci-lint not installed, skipping linting check${NC}"
+  echo "${YELLOW}Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest${NC}"
+fi
+
+# Run go vet
+echo "${YELLOW}Running go vet...${NC}"
+if ! go vet ./...; then
+  echo "${RED}Error: go vet found issues${NC}"
+  exit 1
+fi
+echo "${GREEN}go vet passed${NC}"
+
+# Check for swagger file changes
+SWAGGER_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(yaml|yml|json)$' | grep -i swagger)
+if [ -n "$SWAGGER_FILES" ]; then
+  echo "${YELLOW}Swagger files changed, validating swagger files...${NC}"
+  
+  # TODO: Add swagger validation logic here when implemented
+  # For now, just inform the user
+  echo "${YELLOW}Swagger files detected in commit:${NC}"
+  echo "$SWAGGER_FILES"
+  echo "${YELLOW}Please make sure to update HTTP files if needed${NC}"
+fi
+
+echo "${GREEN}All checks passed!${NC}"
+exit 0
