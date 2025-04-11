@@ -17,6 +17,7 @@ import (
 type Manager struct {
 	basePath   string
 	formatters map[string]ResponseFormatter
+	options    models.SnapshotOptions
 }
 
 // NewManager creates a new snapshot manager
@@ -24,6 +25,10 @@ func NewManager(basePath string) *Manager {
 	manager := &Manager{
 		basePath:   basePath,
 		formatters: make(map[string]ResponseFormatter),
+		options: models.SnapshotOptions{
+			UpdateMode: "none",
+			BasePath:   basePath,
+		},
 	}
 
 	// Register default formatters
@@ -34,6 +39,15 @@ func NewManager(basePath string) *Manager {
 	manager.RegisterFormatter("*/*", &BinaryFormatter{})
 
 	return manager
+}
+
+// WithOptions sets options for the snapshot manager
+func (m *Manager) WithOptions(options models.SnapshotOptions) *Manager {
+	m.options = options
+	if m.options.BasePath != "" {
+		m.basePath = m.options.BasePath
+	}
+	return m
 }
 
 // RegisterFormatter registers a formatter for a specific content type
@@ -131,6 +145,24 @@ func (m *Manager) LoadSnapshot(ctx context.Context, path string) (*models.HTTPRe
 
 // CompareWithSnapshot compares a response with a snapshot
 func (m *Manager) CompareWithSnapshot(ctx context.Context, response *models.HTTPResponse, snapshotPath string) (*models.SnapshotDiff, error) {
+	// Check if snapshot exists
+	fullSnapshotPath := filepath.Join(m.basePath, snapshotPath)
+	if _, err := os.Stat(fullSnapshotPath); os.IsNotExist(err) {
+		// Create snapshot if it doesn't exist
+		if m.options.UpdateMode == "all" || m.options.UpdateMode == "missing" {
+			if err := m.SaveSnapshot(ctx, response, snapshotPath); err != nil {
+				return nil, fmt.Errorf("failed to create new snapshot: %w", err)
+			}
+			// Return an "equal" diff since we just created the snapshot
+			return &models.SnapshotDiff{
+				RequestPath:   response.Request.Path,
+				RequestMethod: response.Request.Method,
+				Equal:         true,
+			}, nil
+		}
+		return nil, fmt.Errorf("snapshot does not exist: %s", snapshotPath)
+	}
+
 	// Load snapshot
 	snapshotResponse, err := m.LoadSnapshot(ctx, snapshotPath)
 	if err != nil {
@@ -163,7 +195,89 @@ func (m *Manager) CompareWithSnapshot(ctx context.Context, response *models.HTTP
 		diff.Equal = false
 	}
 
+	// Update snapshot if needed
+	if !diff.Equal && (m.options.UpdateMode == "all" || m.options.UpdateMode == "failed") {
+		if err := m.SaveSnapshot(ctx, response, snapshotPath); err != nil {
+			return nil, fmt.Errorf("failed to update snapshot: %w", err)
+		}
+	}
+
 	return diff, nil
+}
+
+// ListSnapshots lists all snapshots in a directory
+func (m *Manager) ListSnapshots(ctx context.Context, directory string) ([]string, error) {
+	dir := filepath.Join(m.basePath, directory)
+	
+	// Check if directory exists
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return []string{}, nil
+	}
+	
+	// Find all snapshot files
+	var snapshots []string
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		// Only process files that match the snapshot pattern
+		if !info.IsDir() && strings.HasSuffix(path, ".snap.json") {
+			// Convert to relative path
+			relPath, err := filepath.Rel(m.basePath, path)
+			if err != nil {
+				return err
+			}
+			snapshots = append(snapshots, relPath)
+		}
+		return nil
+	})
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to list snapshots: %w", err)
+	}
+	
+	return snapshots, nil
+}
+
+// CleanupSnapshots removes unused snapshots in a directory
+func (m *Manager) CleanupSnapshots(ctx context.Context, directory string, usedSnapshots map[string]bool) error {
+	dir := filepath.Join(m.basePath, directory)
+	
+	// Check if directory exists
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil
+	}
+	
+	// Find all snapshot files
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		// Only process files that match the snapshot pattern
+		if !info.IsDir() && strings.HasSuffix(path, ".snap.json") {
+			// Convert to relative path
+			relPath, err := filepath.Rel(m.basePath, path)
+			if err != nil {
+				return err
+			}
+			
+			// If the snapshot is not in the used list, remove it
+			if _, used := usedSnapshots[relPath]; !used {
+				if err := os.Remove(path); err != nil {
+					return fmt.Errorf("failed to remove unused snapshot %s: %w", relPath, err)
+				}
+			}
+		}
+		return nil
+	})
+	
+	if err != nil {
+		return fmt.Errorf("failed to cleanup snapshots: %w", err)
+	}
+	
+	return nil
 }
 
 // getFormatter returns the appropriate formatter for the given content type
@@ -248,7 +362,7 @@ func compareStatus(expected, actual int) *models.StatusDiff {
 }
 
 // compareHeaders compares two sets of headers
-func compareHeaders(expected, actual map[string][string) *models.HeaderDiff {
+func compareHeaders(expected, actual map[string][]string) *models.HeaderDiff {
 	diff := &models.HeaderDiff{
 		MissingHeaders:   make(map[string][]string),
 		ExtraHeaders:     make(map[string][]string),
