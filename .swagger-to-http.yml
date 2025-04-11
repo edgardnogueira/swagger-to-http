@@ -1,0 +1,30 @@
+# Swagger-to-HTTP Configuration
+
+# Default output directory for HTTP files
+output:
+  directory: http-requests
+
+# Generator configuration
+generator:
+  indent_json: true
+  include_auth: false
+  auth_header: Authorization
+  default_tag: default
+
+# Git hooks configuration
+hooks:
+  enabled: true
+  auto_update: true
+  paths:
+    # Directories to search for Swagger files (relative to project root)
+    - api/
+    - docs/
+    - swagger/
+  file_patterns:
+    # File patterns to match as Swagger files
+    - "*.swagger.json"
+    - "*.swagger.yaml"
+    - "*.swagger.yml"
+    - "*openapi*.json"
+    - "*openapi*.yaml"
+    - "*openapi*.yml"
