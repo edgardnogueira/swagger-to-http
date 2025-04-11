@@ -1,0 +1,80 @@
+#!/bin/sh
+#
+# Post-checkout hook that detects changes in swagger files
+# and updates the corresponding HTTP files if needed.
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+# Check if this hook is disabled for this run
+if [ -n "$SKIP_GIT_HOOKS" ]; then
+  echo "${YELLOW}Git hooks skipped via SKIP_GIT_HOOKS env var${NC}"
+  exit 0
+fi
+
+# Get arguments
+PREV_HEAD="$1"
+NEW_HEAD="$2"
+CHECKOUT_TYPE="$3"
+
+# Skip in case of file checkout
+if [ "$CHECKOUT_TYPE" -ne 1 ]; then
+  exit 0
+fi
+
+# Check if swagger-to-http is installed
+if ! command -v swagger-to-http >/dev/null 2>&1; then
+  # Check if it exists in the local bin directory
+  if [ -x "./bin/swagger-to-http" ]; then
+    SWAGGER_TO_HTTP="./bin/swagger-to-http"
+  else
+    echo "${YELLOW}Warning: swagger-to-http command not found, skipping auto-update${NC}"
+    echo "${YELLOW}Run 'make build' to build the tool locally${NC}"
+    exit 0
+  fi
+else
+  SWAGGER_TO_HTTP="swagger-to-http"
+fi
+
+# Check if any swagger files were changed between the two heads
+SWAGGER_FILES=$(git diff --name-only "$PREV_HEAD" "$NEW_HEAD" | grep -E '\.(yaml|yml|json)$' | grep -i swagger)
+
+if [ -z "$SWAGGER_FILES" ]; then
+  # No swagger files changed
+  exit 0
+fi
+
+echo "${YELLOW}Swagger files changed:${NC}"
+echo "$SWAGGER_FILES"
+echo "${YELLOW}Checking if HTTP files need to be updated...${NC}"
+
+# Process each changed Swagger file
+for SWAGGER_FILE in $SWAGGER_FILES; do
+  # Check if file exists (it might have been deleted)
+  if [ -f "$SWAGGER_FILE" ]; then
+    echo "${YELLOW}Processing $SWAGGER_FILE...${NC}"
+    
+    # Default output directory is http-requests in the same directory as the Swagger file
+    OUTPUT_DIR="$(dirname "$SWAGGER_FILE")/http-requests"
+    
+    # Check for custom output directory in config
+    if [ -f ".swagger-to-http.yml" ]; then
+      # Read output directory from config, skipping for simplicity in this example
+      :
+    fi
+    
+    echo "${YELLOW}Generating HTTP files to $OUTPUT_DIR...${NC}"
+    if ! $SWAGGER_TO_HTTP generate -f "$SWAGGER_FILE" -o "$OUTPUT_DIR"; then
+      echo "${RED}Error: Failed to generate HTTP files from $SWAGGER_FILE${NC}"
+      continue
+    fi
+    
+    echo "${GREEN}Successfully generated HTTP files for $SWAGGER_FILE${NC}"
+  fi
+done
+
+echo "${GREEN}Swagger file updates processed${NC}"
+exit 0
