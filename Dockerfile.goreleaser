@@ -1,0 +1,17 @@
+FROM alpine:3.18
+
+# Add necessary runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
+
+# Set up non-root user for security
+RUN adduser -D appuser
+USER appuser
+
+WORKDIR /home/appuser
+
+# Copy the pre-built binary from the builder stage
+COPY swagger-to-http /usr/local/bin/
+
+# Command to run
+ENTRYPOINT ["swagger-to-http"]
+CMD ["--help"]
