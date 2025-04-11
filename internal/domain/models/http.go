@@ -5,7 +5,7 @@ type HTTPRequest struct {
 	Name     string
 	Method   string
 	URL      string
-	Headers  []Header
+	Headers  []HTTPHeader
 	Body     string
 	Comments []string
 	Tag      string
