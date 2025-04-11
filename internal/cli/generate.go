@@ -9,6 +9,7 @@ import (
 
 	"github.com/edgardnogueira/swagger-to-http/internal/application/generator"
 	"github.com/edgardnogueira/swagger-to-http/internal/application/parser"
+	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 	"github.com/edgardnogueira/swagger-to-http/internal/infrastructure/config"
 	"github.com/edgardnogueira/swagger-to-http/internal/infrastructure/fs"
 	"github.com/spf13/cobra"
