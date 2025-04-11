@@ -1,0 +1,133 @@
+before:
+  hooks:
+    # Ensure the code is properly formatted and passes static analysis
+    - go mod tidy
+    - golangci-lint run --timeout=5m
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/swagger-to-http
+    ldflags:
+      - -s -w -X github.com/edgardnogueira/swagger-to-http/internal/version.Version={{.Version}} -X github.com/edgardnogueira/swagger-to-http/internal/version.Commit={{.Commit}} -X github.com/edgardnogueira/swagger-to-http/internal/version.BuildDate={{.Date}}
+    flags:
+      - -trimpath
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - completions/*
+      - manpages/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - 'README'
+      - '(?i)typo'
+      - Merge pull request
+      - Merge branch
+
+# Generate documentation
+nfpms:
+  - file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    homepage: https://github.com/edgardnogueira/swagger-to-http
+    description: "A tool to convert Swagger/OpenAPI docs to HTTP files with testing capabilities"
+    maintainer: "Edgard Nogueira <edgard.nogueira@gmail.com>"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+
+# Homebrew formula
+brews:
+  - repository:
+      owner: edgardnogueira
+      name: homebrew-tap
+    folder: Formula
+    homepage: https://github.com/edgardnogueira/swagger-to-http
+    description: A tool to convert Swagger/OpenAPI documentation into organized HTTP request files
+    license: MIT
+    test: |
+      system "#{bin}/swagger-to-http --version"
+    install: |
+      bin.install "swagger-to-http"
+      # Install bash completion
+      bash_completion.install "completions/swagger-to-http.bash" => "swagger-to-http"
+      # Install zsh completion
+      zsh_completion.install "completions/swagger-to-http.zsh" => "_swagger-to-http"
+      # Install fish completion
+      fish_completion.install "completions/swagger-to-http.fish"
+      # Install man pages
+      man1.install "manpages/swagger-to-http.1.gz"
+
+# Docker images
+dockers:
+  - image_templates:
+      - "edgardnogueira/swagger-to-http:{{ .Version }}"
+      - "edgardnogueira/swagger-to-http:latest"
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.description=A tool to convert Swagger/OpenAPI documentation into HTTP requests"
+      - "--label=org.opencontainers.image.licenses=MIT"
+      - "--label=org.opencontainers.image.source=https://github.com/edgardnogueira/swagger-to-http"
+
+# Generate shell completions
+release:
+  github:
+    owner: edgardnogueira
+    name: swagger-to-http
+  prerelease: auto
+  footer: |
+    ## Installation
+    
+    ### Using Go
+    ```shell
+    go install github.com/edgardnogueira/swagger-to-http@{{ .Tag }}
+    ```
+    
+    ### Using Homebrew
+    ```shell
+    brew install edgardnogueira/tap/swagger-to-http
+    ```
+    
+    ### Using Docker
+    ```shell
+    docker pull edgardnogueira/swagger-to-http:{{ .Tag }}
+    ```
