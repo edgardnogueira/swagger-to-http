@@ -1,0 +1,70 @@
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/swagger-to-http
+    ldflags:
+      - -s -w -X github.com/edgardnogueira/swagger-to-http/internal/version.Version={{.Version}}
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - 'README'
+      - '(?i)typo'
+
+# Homebrew formula
+brews:
+  - repository:
+      owner: edgardnogueira
+      name: homebrew-tap
+    folder: Formula
+    homepage: https://github.com/edgardnogueira/swagger-to-http
+    description: A tool to convert Swagger/OpenAPI documentation into organized HTTP request files
+    license: MIT
+    test: |
+      system "#{bin}/swagger-to-http --version"
+
+# Docker images
+dockers:
+  - image_templates:
+      - "edgardnogueira/swagger-to-http:{{ .Version }}"
+      - "edgardnogueira/swagger-to-http:latest"
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
