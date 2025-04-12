@@ -306,3 +306,25 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 	
 	return nil
 }
+
+// listSnapshots lists the snapshots in a directory
+func listSnapshots(cmd *cobra.Command, basePath, directory string) error {
+	manager := snapshot.NewManager(basePath)
+	
+	snapshots, err := manager.ListSnapshots(context.Background(), directory)
+	if err != nil {
+		return fmt.Errorf("failed to list snapshots: %w", err)
+	}
+	
+	if len(snapshots) == 0 {
+		fmt.Println("No snapshots found")
+		return nil
+	}
+	
+	fmt.Printf("Found %d snapshots:\n", len(snapshots))
+	for _, s := range snapshots {
+		fmt.Printf("  %s\n", s)
+	}
+	
+	return nil
+}
