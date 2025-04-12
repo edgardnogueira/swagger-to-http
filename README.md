@@ -86,8 +86,8 @@ Available Commands:
   version     Print the version information
 
 Flags:
-  -h, --help       help for swagger-to-http
-  -v, --version    version for swagger-to-http
+  -h, --help        help for swagger-to-http
+  -v, --version     version for swagger-to-http
 ```
 
 ### Generate Command
@@ -97,10 +97,10 @@ Usage:
   swagger-to-http generate [flags]
 
 Flags:
-  -f, --file string        Swagger/OpenAPI file to process (required if url not provided)
+  -f, --file string         Swagger/OpenAPI file to process (required if url not provided)
   -u, --url string          URL to Swagger/OpenAPI document (required if file not provided)
   -o, --output string       Output directory for HTTP files (default "http-requests")
-  -b, --base-url string    Base URL for requests (overrides the one in the Swagger doc)
+  -b, --base-url string     Base URL for requests (overrides the one in the Swagger doc)
   -t, --default-tag string  Default tag for operations without tags (default "default")
   -i, --indent-json         Indent JSON in request bodies (default true)
       --auth                Include authentication header in requests
@@ -126,8 +126,6 @@ Flags:
 ```
 
 
-For more detailed usage information, see the [Usage Guide](docs/usage.md).
-
 #### Snapshot Test Command
 
 ```
@@ -135,7 +133,7 @@ Usage:
   swagger-to-http snapshot test [file-pattern]
 
 Flags:
-  --update string        Update mode: none, all, failed, missing (default "none")
+  --update string         Update mode: none, all, failed, missing (default "none")
   --ignore-headers string Comma-separated headers to ignore in comparison (default "Date,Set-Cookie")
   --snapshot-dir string   Directory for snapshot storage (default ".snapshots")
   --fail-on-missing       Fail when snapshot is missing
@@ -163,7 +161,7 @@ swagger-to-http uses the following configuration file lookup paths:
 - `$HOME/.swagger-to-http/swagger-to-http.yaml`
 - `/etc/swagger-to-http/swagger-to-http.yaml`
 
-You can also use environment variables with the prefix `STH_` (e.g., `STH_OUTPUT_DIRECTORY`).
+You can also use environment variables with the prefix `STH_`  (e.g., `STH_OUTPUT_DIRECTORY`).
 
 Example configuration file:
 
@@ -206,6 +204,34 @@ GET {{BASE_URL}}/api/users/{{USER_ID}}
 Accept: application/json
 Authorization: Bearer {{TOKEN}}
 
+```
+
+Key features of the HTTP Executor include:
+
+1. **Request Execution**: Execute individual or multiple HTTP requests from `.http` files
+2. **Variable Handling**: Support for environment variables and request-specific variables with priority order:
+   - Request-specific variables (highest priority)
+   - Variables passed to the executor
+   - System environment variables (lowest priority)
+3. **Content-Type Management**: Proper handling of different content types for requests/responses
+4. **Error Handling**: Comprehensive error reporting for network issues, timeouts, and HTTP errors
+5. **Integration with Snapshot System**: Seamless connection with snapshot testing functionality
+
+The HTTP Executor can be used programmatically:
+
+```go
+// Create an HTTP executor with a 30-second timeout
+executor := http.NewExecutor(30*time.Second, nil)
+
+// Execute a request
+response, err := executor.Execute(ctx, request, nil)
+if err != nil {
+    // Handle error
+}
+
+// Use response
+fmt.Printf("Status: %d\n", response.StatusCode)
+fmt.Printf("Body: %s\n", string(response.Body))
 ```
 
 For more details on the HTTP Executor, see the [HTTP Executor Documentation](docs/http-executor.md).
