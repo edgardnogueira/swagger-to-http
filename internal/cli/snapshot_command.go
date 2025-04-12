@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/edgardnogueira/swagger-to-http/internal/application"
-	"github.com/edgardnogueira/swagger-to-http/internal/application/executor"
 	"github.com/edgardnogueira/swagger-to-http/internal/application/snapshot"
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
+	"github.com/edgardnogueira/swagger-to-http/internal/infrastructure/http"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +37,7 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 			snapshotDir, _ := cmd.Flags().GetString("snapshot-dir")
 			failOnMissing, _ := cmd.Flags().GetBool("fail-on-missing")
 			cleanup, _ := cmd.Flags().GetBool("cleanup")
+			timeout, _ := cmd.Flags().GetDuration("timeout")
 			
 			// Parse ignore headers
 			var ignoreHeaders []string
@@ -50,8 +51,8 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 			// Create snapshot options
 			options := models.SnapshotOptions{
 				UpdateMode:     updateMode,
-				IgnoreHeaders: ignoreHeaders,
-				BasePath:      snapshotDir,
+				IgnoreHeaders:  ignoreHeaders,
+				BasePath:       snapshotDir,
 				UpdateExisting: updateMode == "all" || updateMode == "failed",
 			}
 			
@@ -61,7 +62,7 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 				pattern = args[0]
 			}
 			
-			return runSnapshotTests(cmd, pattern, options, failOnMissing, cleanup)
+			return runSnapshotTests(cmd, pattern, options, failOnMissing, cleanup, timeout)
 		},
 	}
 	
@@ -71,6 +72,7 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 	testCmd.Flags().String("snapshot-dir", ".snapshots", "Directory for snapshot storage")
 	testCmd.Flags().Bool("fail-on-missing", false, "Fail when snapshot is missing")
 	testCmd.Flags().Bool("cleanup", false, "Remove unused snapshots after testing")
+	testCmd.Flags().Duration("timeout", 30*time.Second, "HTTP request timeout")
 	
 	// Snapshot update command
 	updateCmd := &cobra.Command{
@@ -80,6 +82,7 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			snapshotDir, _ := cmd.Flags().GetString("snapshot-dir")
+			timeout, _ := cmd.Flags().GetDuration("timeout")
 			
 			// Create snapshot options with update mode set to "all"
 			options := models.SnapshotOptions{
@@ -94,12 +97,13 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 				pattern = args[0]
 			}
 			
-			return runSnapshotTests(cmd, pattern, options, false, false)
+			return runSnapshotTests(cmd, pattern, options, false, false, timeout)
 		},
 	}
 	
 	// Add flags to update command
 	updateCmd.Flags().String("snapshot-dir", ".snapshots", "Directory for snapshot storage")
+	updateCmd.Flags().Duration("timeout", 30*time.Second, "HTTP request timeout")
 	
 	// Snapshot list command
 	listCmd := &cobra.Command{
@@ -156,13 +160,16 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 }
 
 // runSnapshotTests runs snapshot tests for the given file pattern
-func runSnapshotTests(cmd *cobra.Command, pattern string, options models.SnapshotOptions, failOnMissing, cleanup bool) error {
+func runSnapshotTests(cmd *cobra.Command, pattern string, options models.SnapshotOptions, failOnMissing, cleanup bool, timeout time.Duration) error {
 	// Create snapshot manager and service
 	manager := snapshot.NewManager(options.BasePath)
 	service := snapshot.NewService(manager, options)
 	
+	// Create HTTP parser
+	parser := http.NewParser()
+	
 	// Find HTTP files matching pattern
-	files, err := findHTTPFiles(pattern)
+	files, err := parser.FindHTTPFiles(pattern)
 	if err != nil {
 		return fmt.Errorf("failed to find HTTP files: %w", err)
 	}
@@ -174,11 +181,9 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 	
 	fmt.Printf("Found %d HTTP files to test\n", len(files))
 	
-	// Create HTTP executor
-	httpExecutor := executor.NewService()
-	
-	// Create HTTP file parser
-	httpParser := executor.NewHTTPFileParser(nil)
+	// Create HTTP executor with default environment variables
+	env := loadEnvironmentVariables()
+	executor := http.NewExecutor(timeout, env)
 	
 	// Process each file
 	totalResults := []*models.SnapshotResult{}
@@ -187,7 +192,7 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 		fmt.Printf("\nTesting file: %s\n", file)
 		
 		// Read and parse HTTP file
-		httpFile, err := httpParser.ParseFile(file)
+		httpFile, err := parser.ParseFile(file)
 		if err != nil {
 			fmt.Printf("  Error parsing file: %s\n", err)
 			continue
@@ -198,7 +203,7 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 			fmt.Printf("  Request %d: %s %s\n", i+1, request.Method, request.Path)
 			
 			// Execute request
-			response, err := httpExecutor.Execute(context.Background(), &request, nil)
+			response, err := executor.Execute(context.Background(), &request, nil)
 			if err != nil {
 				fmt.Printf("    Error executing request: %s\n", err)
 				continue
@@ -327,4 +332,150 @@ func listSnapshots(cmd *cobra.Command, basePath, directory string) error {
 	}
 	
 	return nil
+}
+
+// cleanupSnapshots removes orphaned snapshots
+func cleanupSnapshots(cmd *cobra.Command, basePath, directory string) error {
+	manager := snapshot.NewManager(basePath)
+	
+	// Create HTTP parser to find valid HTTP files
+	parser := http.NewParser()
+	
+	// List all snapshots
+	snapshots, err := manager.ListSnapshots(context.Background(), directory)
+	if err != nil {
+		return fmt.Errorf("failed to list snapshots: %w", err)
+	}
+	
+	if len(snapshots) == 0 {
+		fmt.Println("No snapshots found")
+		return nil
+	}
+	
+	fmt.Printf("Found %d snapshots\n", len(snapshots))
+	
+	// Find all HTTP files
+	httpFiles, err := parser.FindHTTPFiles("**/*.http")
+	if err != nil {
+		return fmt.Errorf("failed to find HTTP files: %w", err)
+	}
+	
+	// Create a map of potential snapshot paths
+	validPaths := make(map[string]bool)
+	
+	// Parse HTTP files and add possible snapshot paths
+	for _, file := range httpFiles {
+		httpFile, err := parser.ParseFile(file)
+		if err != nil {
+			continue
+		}
+		
+		dir := filepath.Dir(file)
+		fileBase := filepath.Base(file)
+		fileExt := filepath.Ext(fileBase)
+		fileName := fileBase
+		if fileExt != "" {
+			fileName = fileBase[:len(fileBase)-len(fileExt)]
+		}
+		
+		for _, request := range httpFile.Requests {
+			snapshotName := fmt.Sprintf("%s_%s.snap.json", fileName, strings.ToLower(request.Method))
+			snapshotPath := filepath.Join(basePath, dir, snapshotName)
+			validPaths[snapshotPath] = true
+		}
+	}
+	
+	// Check each snapshot against the valid paths
+	var orphaned []string
+	for _, s := range snapshots {
+		fullPath := filepath.Join(basePath, s)
+		if _, valid := validPaths[fullPath]; !valid {
+			orphaned = append(orphaned, s)
+		}
+	}
+	
+	if len(orphaned) == 0 {
+		fmt.Println("No orphaned snapshots found")
+		return nil
+	}
+	
+	fmt.Printf("Found %d orphaned snapshots:\n", len(orphaned))
+	for _, s := range orphaned {
+		fmt.Printf("  %s\n", s)
+	}
+	
+	// Confirm deletion
+	fmt.Print("Do you want to delete these snapshots? (y/N): ")
+	var confirm string
+	fmt.Scanln(&confirm)
+	
+	if strings.ToLower(confirm) != "y" {
+		fmt.Println("Cleanup cancelled")
+		return nil
+	}
+	
+	// Delete orphaned snapshots
+	deleted := 0
+	for _, s := range orphaned {
+		fullPath := filepath.Join(basePath, s)
+		if err := os.Remove(fullPath); err != nil {
+			fmt.Printf("Error deleting %s: %s\n", s, err)
+		} else {
+			deleted++
+		}
+	}
+	
+	fmt.Printf("Deleted %d orphaned snapshots\n", deleted)
+	return nil
+}
+
+// printTestSummary prints a summary of test results
+func printTestSummary(stats *models.SnapshotStats) {
+	duration := stats.EndTime.Sub(stats.StartTime)
+	
+	fmt.Println("\n=======================================")
+	fmt.Println("Snapshot Test Summary")
+	fmt.Println("=======================================")
+	fmt.Printf("Total tests:    %d\n", stats.Total)
+	fmt.Printf("Passed:         %s\n", color.GreenString("%d", stats.Passed))
+	
+	if stats.Failed > 0 {
+		fmt.Printf("Failed:         %s\n", color.RedString("%d", stats.Failed))
+	} else {
+		fmt.Printf("Failed:         %d\n", stats.Failed)
+	}
+	
+	if stats.Created > 0 {
+		fmt.Printf("Created:        %s\n", color.YellowString("%d", stats.Created))
+	} else {
+		fmt.Printf("Created:        %d\n", stats.Created)
+	}
+	
+	if stats.Updated > 0 {
+		fmt.Printf("Updated:        %s\n", color.YellowString("%d", stats.Updated))
+	} else {
+		fmt.Printf("Updated:        %d\n", stats.Updated)
+	}
+	
+	fmt.Printf("Duration:       %.2f seconds\n", duration.Seconds())
+	fmt.Println("=======================================")
+}
+
+// loadEnvironmentVariables loads environment variables for HTTP requests
+func loadEnvironmentVariables() map[string]string {
+	env := make(map[string]string)
+	
+	// Add environment variables from .env file if exists
+	// TODO: Implement .env file loading
+	
+	// Add system environment variables with HTTP_ prefix
+	for _, e := range os.Environ() {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 && strings.HasPrefix(parts[0], "HTTP_") {
+			key := strings.TrimPrefix(parts[0], "HTTP_")
+			env[key] = parts[1]
+		}
+	}
+	
+	return env
 }
