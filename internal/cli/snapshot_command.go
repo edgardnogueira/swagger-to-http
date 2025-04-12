@@ -11,6 +11,7 @@ import (
 	"github.com/edgardnogueira/swagger-to-http/internal/application"
 	"github.com/edgardnogueira/swagger-to-http/internal/application/snapshot"
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
+	"github.com/edgardnogueira/swagger-to-http/internal/infrastructure/http"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -36,6 +37,7 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 			snapshotDir, _ := cmd.Flags().GetString("snapshot-dir")
 			failOnMissing, _ := cmd.Flags().GetBool("fail-on-missing")
 			cleanup, _ := cmd.Flags().GetBool("cleanup")
+			timeout, _ := cmd.Flags().GetDuration("timeout")
 			
 			// Parse ignore headers
 			var ignoreHeaders []string
@@ -48,9 +50,9 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 			
 			// Create snapshot options
 			options := models.SnapshotOptions{
-				UpdateMode:    updateMode,
-				IgnoreHeaders: ignoreHeaders,
-				BasePath:      snapshotDir,
+				UpdateMode:     updateMode,
+				IgnoreHeaders:  ignoreHeaders,
+				BasePath:       snapshotDir,
 				UpdateExisting: updateMode == "all" || updateMode == "failed",
 			}
 			
@@ -60,7 +62,7 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 				pattern = args[0]
 			}
 			
-			return runSnapshotTests(cmd, pattern, options, failOnMissing, cleanup)
+			return runSnapshotTests(cmd, pattern, options, failOnMissing, cleanup, timeout)
 		},
 	}
 	
@@ -70,6 +72,7 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 	testCmd.Flags().String("snapshot-dir", ".snapshots", "Directory for snapshot storage")
 	testCmd.Flags().Bool("fail-on-missing", false, "Fail when snapshot is missing")
 	testCmd.Flags().Bool("cleanup", false, "Remove unused snapshots after testing")
+	testCmd.Flags().Duration("timeout", 30*time.Second, "HTTP request timeout")
 	
 	// Snapshot update command
 	updateCmd := &cobra.Command{
@@ -79,11 +82,12 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			snapshotDir, _ := cmd.Flags().GetString("snapshot-dir")
+			timeout, _ := cmd.Flags().GetDuration("timeout")
 			
 			// Create snapshot options with update mode set to "all"
 			options := models.SnapshotOptions{
-				UpdateMode:    "all",
-				BasePath:      snapshotDir,
+				UpdateMode:     "all",
+				BasePath:       snapshotDir,
 				UpdateExisting: true,
 			}
 			
@@ -93,12 +97,13 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 				pattern = args[0]
 			}
 			
-			return runSnapshotTests(cmd, pattern, options, false, false)
+			return runSnapshotTests(cmd, pattern, options, false, false, timeout)
 		},
 	}
 	
 	// Add flags to update command
 	updateCmd.Flags().String("snapshot-dir", ".snapshots", "Directory for snapshot storage")
+	updateCmd.Flags().Duration("timeout", 30*time.Second, "HTTP request timeout")
 	
 	// Snapshot list command
 	listCmd := &cobra.Command{
@@ -155,13 +160,16 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 }
 
 // runSnapshotTests runs snapshot tests for the given file pattern
-func runSnapshotTests(cmd *cobra.Command, pattern string, options models.SnapshotOptions, failOnMissing, cleanup bool) error {
+func runSnapshotTests(cmd *cobra.Command, pattern string, options models.SnapshotOptions, failOnMissing, cleanup bool, timeout time.Duration) error {
 	// Create snapshot manager and service
 	manager := snapshot.NewManager(options.BasePath)
 	service := snapshot.NewService(manager, options)
 	
+	// Create HTTP parser
+	parser := http.NewParser()
+	
 	// Find HTTP files matching pattern
-	files, err := findHTTPFiles(pattern)
+	files, err := parser.FindHTTPFiles(pattern)
 	if err != nil {
 		return fmt.Errorf("failed to find HTTP files: %w", err)
 	}
@@ -173,9 +181,9 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 	
 	fmt.Printf("Found %d HTTP files to test\n", len(files))
 	
-	// Create HTTP executor
-	// TODO: Replace with actual HTTP executor when implemented
-	executor := &mockHTTPExecutor{}
+	// Create HTTP executor with default environment variables
+	env := loadEnvironmentVariables()
+	executor := http.NewExecutor(timeout, env)
 	
 	// Process each file
 	totalResults := []*models.SnapshotResult{}
@@ -184,19 +192,18 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 		fmt.Printf("\nTesting file: %s\n", file)
 		
 		// Read and parse HTTP file
-		// TODO: Implement actual HTTP file parsing
-		requests, err := parseHTTPFile(file)
+		httpFile, err := parser.ParseFile(file)
 		if err != nil {
 			fmt.Printf("  Error parsing file: %s\n", err)
 			continue
 		}
 		
 		// Process each request
-		for i, request := range requests {
+		for i, request := range httpFile.Requests {
 			fmt.Printf("  Request %d: %s %s\n", i+1, request.Method, request.Path)
 			
 			// Execute request
-			response, err := executor.Execute(context.Background(), request, nil)
+			response, err := executor.Execute(context.Background(), &request, nil)
 			if err != nil {
 				fmt.Printf("    Error executing request: %s\n", err)
 				continue
@@ -331,6 +338,9 @@ func listSnapshots(cmd *cobra.Command, basePath, directory string) error {
 func cleanupSnapshots(cmd *cobra.Command, basePath, directory string) error {
 	manager := snapshot.NewManager(basePath)
 	
+	// Create HTTP parser to find valid HTTP files
+	parser := http.NewParser()
+	
 	// List all snapshots
 	snapshots, err := manager.ListSnapshots(context.Background(), directory)
 	if err != nil {
@@ -345,7 +355,7 @@ func cleanupSnapshots(cmd *cobra.Command, basePath, directory string) error {
 	fmt.Printf("Found %d snapshots\n", len(snapshots))
 	
 	// Find all HTTP files
-	httpFiles, err := findHTTPFiles("**/*.http")
+	httpFiles, err := parser.FindHTTPFiles("**/*.http")
 	if err != nil {
 		return fmt.Errorf("failed to find HTTP files: %w", err)
 	}
@@ -353,29 +363,33 @@ func cleanupSnapshots(cmd *cobra.Command, basePath, directory string) error {
 	// Create a map of potential snapshot paths
 	validPaths := make(map[string]bool)
 	
-	// For each HTTP file, add possible snapshot paths
-	// This is a simplistic approach - a more robust solution would actually
-	// parse the HTTP files and generate the exact snapshot paths
+	// Parse HTTP files and add possible snapshot paths
 	for _, file := range httpFiles {
-		dir := filepath.Dir(file)
-		base := filepath.Base(file)
-		ext := filepath.Ext(base)
-		name := base
-		if ext != "" {
-			name = base[:len(base)-len(ext)]
+		httpFile, err := parser.ParseFile(file)
+		if err != nil {
+			continue
 		}
 		
-		// Add potential snapshot paths for common HTTP methods
-		for _, method := range []string{"get", "post", "put", "delete", "patch"} {
-			snapshotName := fmt.Sprintf("%s_%s.snap.json", name, method)
-			validPaths[filepath.Join(dir, snapshotName)] = true
+		dir := filepath.Dir(file)
+		fileBase := filepath.Base(file)
+		fileExt := filepath.Ext(fileBase)
+		fileName := fileBase
+		if fileExt != "" {
+			fileName = fileBase[:len(fileBase)-len(fileExt)]
+		}
+		
+		for _, request := range httpFile.Requests {
+			snapshotName := fmt.Sprintf("%s_%s.snap.json", fileName, strings.ToLower(request.Method))
+			snapshotPath := filepath.Join(basePath, dir, snapshotName)
+			validPaths[snapshotPath] = true
 		}
 	}
 	
 	// Check each snapshot against the valid paths
 	var orphaned []string
 	for _, s := range snapshots {
-		if _, valid := validPaths[s]; !valid {
+		fullPath := filepath.Join(basePath, s)
+		if _, valid := validPaths[fullPath]; !valid {
 			orphaned = append(orphaned, s)
 		}
 	}
@@ -415,71 +429,13 @@ func cleanupSnapshots(cmd *cobra.Command, basePath, directory string) error {
 	return nil
 }
 
-// findHTTPFiles finds all .http files matching the given pattern
-func findHTTPFiles(pattern string) ([]string, error) {
-	// TODO: Implement proper file glob matching
-	// For now, just return a mock example
-	return []string{
-		"example/api/users.http",
-		"example/api/products.http",
-	}, nil
-}
-
-// parseHTTPFile parses an HTTP file into individual requests
-func parseHTTPFile(file string) ([]*models.HTTPRequest, error) {
-	// TODO: Implement actual HTTP file parsing
-	// For now, just return mock examples based on the filename
-	
-	if strings.Contains(file, "users") {
-		return []*models.HTTPRequest{
-			{
-				Method: "GET",
-				Path:   "/api/users",
-				Headers: map[string][]string{
-					"Accept": {"application/json"},
-				},
-			},
-			{
-				Method: "GET",
-				Path:   "/api/users/1",
-				Headers: map[string][]string{
-					"Accept": {"application/json"},
-				},
-			},
-		}, nil
-	}
-	
-	if strings.Contains(file, "products") {
-		return []*models.HTTPRequest{
-			{
-				Method: "GET",
-				Path:   "/api/products",
-				Headers: map[string][]string{
-					"Accept": {"application/json"},
-				},
-			},
-			{
-				Method: "POST",
-				Path:   "/api/products",
-				Headers: map[string][]string{
-					"Content-Type": {"application/json"},
-					"Accept":       {"application/json"},
-				},
-				Body: []byte(`{"name":"New Product","price":99.99}`),
-			},
-		}, nil
-	}
-	
-	return nil, fmt.Errorf("unsupported file: %s", file)
-}
-
 // printTestSummary prints a summary of test results
 func printTestSummary(stats *models.SnapshotStats) {
 	duration := stats.EndTime.Sub(stats.StartTime)
 	
-	fmt.Println("\n========================================")
+	fmt.Println("\n=======================================")
 	fmt.Println("Snapshot Test Summary")
-	fmt.Println("========================================")
+	fmt.Println("=======================================")
 	fmt.Printf("Total tests:    %d\n", stats.Total)
 	fmt.Printf("Passed:         %s\n", color.GreenString("%d", stats.Passed))
 	
@@ -502,53 +458,24 @@ func printTestSummary(stats *models.SnapshotStats) {
 	}
 	
 	fmt.Printf("Duration:       %.2f seconds\n", duration.Seconds())
-	fmt.Println("========================================")
+	fmt.Println("=======================================")
 }
 
-// mockHTTPExecutor implements a simple mock HTTPExecutor for testing
-type mockHTTPExecutor struct{}
-
-// Execute mocks the execution of an HTTP request
-func (e *mockHTTPExecutor) Execute(ctx context.Context, request *models.HTTPRequest, variables map[string]string) (*models.HTTPResponse, error) {
-	// Create a mock response based on the request
-	response := &models.HTTPResponse{
-		StatusCode:  200,
-		Status:      "200 OK",
-		ContentType: "application/json",
-		Headers: map[string][]string{
-			"Content-Type": {"application/json"},
-			"Date":         {time.Now().Format(time.RFC1123)},
-		},
-		Request:   request,
-		Timestamp: time.Now(),
+// loadEnvironmentVariables loads environment variables for HTTP requests
+func loadEnvironmentVariables() map[string]string {
+	env := make(map[string]string)
+	
+	// Add environment variables from .env file if exists
+	// TODO: Implement .env file loading
+	
+	// Add system environment variables with HTTP_ prefix
+	for _, e := range os.Environ() {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 && strings.HasPrefix(parts[0], "HTTP_") {
+			key := strings.TrimPrefix(parts[0], "HTTP_")
+			env[key] = parts[1]
+		}
 	}
 	
-	// Generate a mock response body based on the request path
-	if strings.Contains(request.Path, "/users") {
-		if strings.Contains(request.Path, "/users/1") {
-			response.Body = []byte(`{"id":1,"name":"John Doe","email":"john@example.com"}`)
-		} else {
-			response.Body = []byte(`[{"id":1,"name":"John Doe"},{"id":2,"name":"Jane Smith"}]`)
-		}
-	} else if strings.Contains(request.Path, "/products") {
-		if request.Method == "POST" {
-			response.StatusCode = 201
-			response.Status = "201 Created"
-			response.Body = []byte(`{"id":123,"name":"New Product","price":99.99}`)
-			response.Headers["Location"] = []string{"/api/products/123"}
-		} else {
-			response.Body = []byte(`[{"id":1,"name":"Product A","price":29.99},{"id":2,"name":"Product B","price":49.99}]`)
-		}
-	} else {
-		response.StatusCode = 404
-		response.Status = "404 Not Found"
-		response.Body = []byte(`{"error":"Not found"}`)
-	}
-	
-	response.ContentLength = int64(len(response.Body))
-	
-	// Simulate a slight delay
-	time.Sleep(100 * time.Millisecond)
-	
-	return response, nil
+	return env
 }
