@@ -154,3 +154,155 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 	// Add snapshot command to root
 	rootCmd.AddCommand(snapshotCmd)
 }
+
+// runSnapshotTests runs snapshot tests for the given file pattern
+func runSnapshotTests(cmd *cobra.Command, pattern string, options models.SnapshotOptions, failOnMissing, cleanup bool) error {
+	// Create snapshot manager and service
+	manager := snapshot.NewManager(options.BasePath)
+	service := snapshot.NewService(manager, options)
+	
+	// Find HTTP files matching pattern
+	files, err := findHTTPFiles(pattern)
+	if err != nil {
+		return fmt.Errorf("failed to find HTTP files: %w", err)
+	}
+	
+	if len(files) == 0 {
+		fmt.Println("No HTTP files found matching pattern:", pattern)
+		return nil
+	}
+	
+	fmt.Printf("Found %d HTTP files to test\n", len(files))
+	
+	// Create HTTP executor
+	httpExecutor := executor.NewService()
+	
+	// Create HTTP file parser
+	httpParser := executor.NewHTTPFileParser(nil)
+	
+	// Process each file
+	totalResults := []*models.SnapshotResult{}
+	
+	for _, file := range files {
+		fmt.Printf("\nTesting file: %s\n", file)
+		
+		// Read and parse HTTP file
+		httpFile, err := httpParser.ParseFile(file)
+		if err != nil {
+			fmt.Printf("  Error parsing file: %s\n", err)
+			continue
+		}
+		
+		// Process each request
+		for i, request := range httpFile.Requests {
+			fmt.Printf("  Request %d: %s %s\n", i+1, request.Method, request.Path)
+			
+			// Execute request
+			response, err := httpExecutor.Execute(context.Background(), &request, nil)
+			if err != nil {
+				fmt.Printf("    Error executing request: %s\n", err)
+				continue
+			}
+			
+			// Run snapshot test
+			result, err := service.RunTest(context.Background(), response, file)
+			if err != nil {
+				if strings.Contains(err.Error(), "snapshot does not exist") && !failOnMissing {
+					fmt.Printf("    %s Snapshot does not exist (created)\n", color.GreenString("✓"))
+					totalResults = append(totalResults, &models.SnapshotResult{
+						RequestPath:   request.Path,
+						RequestMethod: request.Method,
+						Passed:        true,
+						Updated:       true,
+					})
+					continue
+				}
+				
+				fmt.Printf("    %s %s\n", color.RedString("✗"), err)
+				totalResults = append(totalResults, &models.SnapshotResult{
+					RequestPath:   request.Path,
+					RequestMethod: request.Method,
+					Passed:        false,
+					Error:         err,
+				})
+				continue
+			}
+			
+			if result.Passed {
+				if result.Updated {
+					fmt.Printf("    %s Snapshot updated\n", color.YellowString("⟳"))
+				} else {
+					fmt.Printf("    %s Snapshot matched\n", color.GreenString("✓"))
+				}
+			} else {
+				fmt.Printf("    %s Snapshot comparison failed\n", color.RedString("✗"))
+				
+				// Print diff details
+				if result.Diff != nil && result.Diff.StatusDiff != nil && !result.Diff.StatusDiff.Equal {
+					fmt.Printf("      Status code: expected %d, got %d\n", 
+						result.Diff.StatusDiff.Expected, 
+						result.Diff.StatusDiff.Actual)
+				}
+				
+				if result.Diff != nil && result.Diff.HeaderDiff != nil && !result.Diff.HeaderDiff.Equal {
+					fmt.Println("      Headers differ:")
+					if len(result.Diff.HeaderDiff.MissingHeaders) > 0 {
+						fmt.Println("        Missing headers:")
+						for h := range result.Diff.HeaderDiff.MissingHeaders {
+							fmt.Printf("          - %s\n", h)
+						}
+					}
+					if len(result.Diff.HeaderDiff.ExtraHeaders) > 0 {
+						fmt.Println("        Extra headers:")
+						for h := range result.Diff.HeaderDiff.ExtraHeaders {
+							fmt.Printf("          + %s\n", h)
+						}
+					}
+				}
+				
+				if result.Diff != nil && result.Diff.BodyDiff != nil && !result.Diff.BodyDiff.Equal {
+					fmt.Printf("      Body content differs (expected %d bytes, got %d bytes)\n", 
+						result.Diff.BodyDiff.ExpectedSize, 
+						result.Diff.BodyDiff.ActualSize)
+					
+					// Print diff preview if available
+					if result.Diff.BodyDiff.DiffContent != "" {
+						fmt.Println("      Diff preview:")
+						lines := strings.Split(result.Diff.BodyDiff.DiffContent, "\n")
+						maxLines := 10
+						if len(lines) > maxLines {
+							lines = lines[:maxLines]
+							fmt.Printf("        %s\n        ...(truncated)...\n", 
+								strings.Join(lines, "\n        "))
+						} else {
+							fmt.Printf("        %s\n", strings.Join(lines, "\n        "))
+						}
+					}
+				}
+			}
+			
+			totalResults = append(totalResults, result)
+		}
+	}
+	
+	// Print summary
+	stats := service.GetStats()
+	printTestSummary(stats)
+	
+	// Cleanup unused snapshots if requested
+	if cleanup {
+		fmt.Println("\nCleaning up unused snapshots...")
+		if err := service.CleanupUnusedSnapshots(context.Background(), ""); err != nil {
+			fmt.Printf("Error during cleanup: %s\n", err)
+		} else {
+			fmt.Println("Cleanup completed successfully")
+		}
+	}
+	
+	// Return error if any tests failed
+	if stats.Failed > 0 {
+		return fmt.Errorf("%d of %d tests failed", stats.Failed, stats.Total)
+	}
+	
+	return nil
+}
