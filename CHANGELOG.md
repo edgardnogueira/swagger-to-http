@@ -9,13 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- HTTP executor for executing requests from .http files
+- Support for variable substitution in URLs, headers, and body content
+- Environment variable loading for configurable requests
+- HTTP file parser with robust format support
+- HTTP timeout configuration for reliable testing
+- Comprehensive error handling for network issues
 - Snapshot testing system with content-type aware formatters
 - Support for JSON, XML, HTML, plain text, and binary response comparison
 - Snapshot management commands (test, update, list, cleanup)
 - Flexible snapshot update modes (none, all, failed, missing)
 - Comprehensive diffing between responses with detailed output
 - Configurable header ignoring for reliable snapshot comparisons
-
+- Complete HTTP request lifecycle management
 - Comprehensive documentation and examples
 - API reference for developers
 - Detailed guides for installation, usage, and configuration
@@ -27,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved README with detailed information and examples
 - Enhanced command-line help text
 - Added proper code documentation
-
+- Updated snapshot command to use real HTTP executor
 
 ## [0.1.0] - 2025-04-11
 
