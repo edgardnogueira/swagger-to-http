@@ -14,6 +14,8 @@ A tool to convert Swagger/OpenAPI documentation into organized HTTP request file
 - Automatically generate example request bodies based on schemas
 - Execute HTTP requests and compare responses with snapshots
 - Snapshot testing with content-type aware comparison
+- Variable substitution in URLs, headers, and request bodies
+- Environment variable support for configurable requests
 - Integration with Git hooks for automatic updates (coming soon)
 
 ## Table of Contents
@@ -22,6 +24,7 @@ A tool to convert Swagger/OpenAPI documentation into organized HTTP request file
 - [Quick Start](#quick-start)
 - [Usage](#usage)
 - [Configuration](#configuration)
+- [HTTP Executor](#http-executor)
 - [Snapshot Testing](#snapshot-testing)
 - [Examples](#examples)
 - [Project Status](#project-status)
@@ -83,8 +86,8 @@ Available Commands:
   version     Print the version information
 
 Flags:
-  -h, --help      help for swagger-to-http
-  -v, --version   version for swagger-to-http
+  -h, --help       help for swagger-to-http
+  -v, --version    version for swagger-to-http
 ```
 
 ### Generate Command
@@ -94,10 +97,10 @@ Usage:
   swagger-to-http generate [flags]
 
 Flags:
-  -f, --file string         Swagger/OpenAPI file to process (required if url not provided)
+  -f, --file string        Swagger/OpenAPI file to process (required if url not provided)
   -u, --url string          URL to Swagger/OpenAPI document (required if file not provided)
   -o, --output string       Output directory for HTTP files (default "http-requests")
-  -b, --base-url string     Base URL for requests (overrides the one in the Swagger doc)
+  -b, --base-url string    Base URL for requests (overrides the one in the Swagger doc)
   -t, --default-tag string  Default tag for operations without tags (default "default")
   -i, --indent-json         Indent JSON in request bodies (default true)
       --auth                Include authentication header in requests
@@ -132,11 +135,12 @@ Usage:
   swagger-to-http snapshot test [file-pattern]
 
 Flags:
-  --update string         Update mode: none, all, failed, missing (default "none")
+  --update string        Update mode: none, all, failed, missing (default "none")
   --ignore-headers string Comma-separated headers to ignore in comparison (default "Date,Set-Cookie")
   --snapshot-dir string   Directory for snapshot storage (default ".snapshots")
   --fail-on-missing       Fail when snapshot is missing
   --cleanup               Remove unused snapshots after testing
+  --timeout duration      HTTP request timeout (default 30s)
   -h, --help              help for test
 ```
 
@@ -147,10 +151,10 @@ Usage:
   swagger-to-http snapshot update [file-pattern]
 
 Flags:
-  --snapshot-dir string   Directory for snapshot storage (default ".snapshots") 
+  --snapshot-dir string   Directory for snapshot storage (default ".snapshots")
+  --timeout duration      HTTP request timeout (default 30s)
   -h, --help              help for update
 ```
-
 
 ## Configuration
 
@@ -179,6 +183,32 @@ snapshots:
     - Set-Cookie
 
 ```
+
+## HTTP Executor
+
+The HTTP Executor is responsible for executing HTTP requests defined in `.http` files. It supports:
+
+- Variable substitution in URLs, headers, and request bodies using `{{VARIABLE_NAME}}` syntax
+- Environment variables support with system environment variables (prefixed with `HTTP_`)
+- All standard HTTP methods (GET, POST, PUT, DELETE, PATCH, etc.)
+- Custom headers and authentication
+- Timeout configuration
+- Content-type aware processing
+
+Example of an HTTP file with variables:
+
+```http
+# Get user details
+@name GetUser
+@tag users
+
+GET {{BASE_URL}}/api/users/{{USER_ID}}
+Accept: application/json
+Authorization: Bearer {{TOKEN}}
+
+```
+
+For more details on the HTTP Executor, see the [HTTP Executor Documentation](docs/http-executor.md).
 
 ## Snapshot Testing
 
@@ -253,38 +283,6 @@ swagger-to-http snapshot cleanup
 
 For more configuration options, see the [Configuration Guide](docs/configuration.md).
 
-## Snapshot Testing
-
-Snapshot testing allows you to:
-
-1. Execute HTTP requests in .http files
-2. Save responses as snapshots
-3. Compare future responses against stored snapshots
-4. Detect changes in API behavior
-
-### Creating Snapshots
-
-```bash
-# Create or update all snapshots
-swagger-to-http snapshot update "api/*.http"
-
-# Create specific snapshots
-swagger-to-http snapshot update "api/users.http"
-```
-
-### Running Tests
-
-```bash
-# Test all HTTP files
-swagger-to-http snapshot test "api/*.http"
-
-# Test specific files
-swagger-to-http snapshot test "api/users.http"
-
-# Update failed snapshots automatically
-swagger-to-http snapshot test --update failed "api/*.http"
-```
-
 For more information on snapshot testing, see the [Snapshot Testing Guide](docs/snapshot-testing.md).
 
 ## Examples
@@ -317,6 +315,7 @@ Comprehensive documentation is available in the [docs](docs/) directory:
 - [Usage Guide](docs/usage.md)
 - [Configuration Guide](docs/configuration.md)
 - [HTTP File Format](docs/http-file-format.md)
+- [HTTP Executor](docs/http-executor.md)
 - [Snapshot Testing](docs/snapshot-testing.md)
 - [Examples](docs/examples/)
 - [API Reference](docs/api-reference.md)
