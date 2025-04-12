@@ -143,6 +143,17 @@ The executor follows clean architecture principles:
 
 - Domain models are defined in `internal/domain/models`
 - The executor interface is defined in `internal/application/interfaces.go`
+- The implementation is in the infrastructure layer
+
+## Integration with Snapshot Testing
+
+The HTTP executor is integrated with the snapshot testing system to:
+
+1. Parse `.http` files into request objects
+2. Execute the requests to get responses
+3. Save responses as snapshots or compare with existing snapshots
+
+This workflow enables automated testing of APIs against known good responses.
 
 ## Error Handling
 
@@ -163,9 +174,57 @@ The HTTP executor is thoroughly tested with unit tests covering:
 - Request execution
 - Variable substitution
 - Error handling
-- HTTP file parsing
+- HTTP file parser
 - Multi-request file execution
 
 Tests can be found in:
 - `internal/infrastructure/http/executor_test.go`
 - `internal/infrastructure/http/parser_test.go`
+
+## Future Improvements
+
+Planned enhancements for the HTTP executor:
+
+1. Session management
+   - Cookie persistence between requests
+   - OAuth flows
+
+2. Advanced variable handling
+   - Extract variables from responses
+   - Use variables in subsequent requests
+   - Support for complex variable expressions
+
+3. Performance optimizations
+   - Connection pooling
+   - Parallel request execution
+   - Caching responses
+
+4. Improved error reporting
+   - Detailed response analysis
+   - Context-aware error messages
+   - Suggestions for common issues
+
+5. Extended protocol support
+   - WebSockets
+   - gRPC
+   - GraphQL
+
+## CLI Commands
+
+The HTTP executor can be used via the following CLI commands:
+
+```bash
+# Run tests for all .http files
+swagger-to-http snapshot test
+
+# Run tests for specific file or pattern
+swagger-to-http snapshot test api/users.http
+
+# Update snapshots
+swagger-to-http snapshot update api/products.http
+
+# List existing snapshots
+swagger-to-http snapshot list
+```
+
+See the [CLI Documentation](cli.md) for more details on available commands and options.
