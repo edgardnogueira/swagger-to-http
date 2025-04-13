@@ -61,12 +61,13 @@ type HTTPHeader struct {
 	Value string
 }
 
-// HTTPFileRequest represents an HTTP request in .http file format (for backward compatibility)
+// HTTPFileRequest represents an HTTP request in .http file format (will be deprecated)
+// This is kept for backward compatibility with existing code
 type HTTPFileRequest struct {
 	Name     string
 	Method   string
 	URL      string
-	Headers  []HTTPHeader
+	Headers  map[string]string
 	Body     string
 	Comments []string
 	Tag      string
@@ -76,7 +77,7 @@ type HTTPFileRequest struct {
 // HTTPFile represents a collection of HTTP requests to be written to a .http file
 type HTTPFile struct {
 	Filename string
-	Requests []HTTPFileRequest
+	Requests []HTTPRequest
 }
 
 // HTTPDirectory represents a directory containing HTTP files
@@ -111,25 +112,18 @@ func (r *HTTPRequest) SetHeaderValue(name, value string) {
 
 // GetHeaderValue gets a header value by name from HTTPFileRequest
 func (r *HTTPFileRequest) GetHeaderValue(name string) string {
-	for _, header := range r.Headers {
-		if header.Name == name {
-			return header.Value
-		}
+	if r.Headers == nil {
+		return ""
 	}
-	return ""
+	return r.Headers[name]
 }
 
 // SetHeaderValue sets a header value in HTTPFileRequest
 func (r *HTTPFileRequest) SetHeaderValue(name, value string) {
-	// Check if header already exists
-	for i, header := range r.Headers {
-		if header.Name == name {
-			r.Headers[i].Value = value
-			return
-		}
+	if r.Headers == nil {
+		r.Headers = make(map[string]string)
 	}
-	// Add new header
-	r.Headers = append(r.Headers, HTTPHeader{Name: name, Value: value})
+	r.Headers[name] = value
 }
 
 // Clone creates a deep copy of an HTTPRequest
@@ -196,9 +190,11 @@ func (r *HTTPFileRequest) Clone() *HTTPFileRequest {
 	}
 	
 	// Copy headers
-	if len(r.Headers) > 0 {
-		clone.Headers = make([]HTTPHeader, len(r.Headers))
-		copy(clone.Headers, r.Headers)
+	if r.Headers != nil {
+		clone.Headers = make(map[string]string)
+		for k, v := range r.Headers {
+			clone.Headers[k] = v
+		}
 	}
 	
 	// Copy comments
@@ -208,4 +204,65 @@ func (r *HTTPFileRequest) Clone() *HTTPFileRequest {
 	}
 	
 	return clone
+}
+
+// ToHTTPRequest converts an HTTPFileRequest to an HTTPRequest
+func (r *HTTPFileRequest) ToHTTPRequest() *HTTPRequest {
+	req := &HTTPRequest{
+		Method:   r.Method,
+		URL:      r.URL,
+		Body:     r.Body,
+		Name:     r.Name,
+		Path:     r.Path,
+		Tag:      r.Tag,
+		Comments: make([]string, len(r.Comments)),
+	}
+	
+	// Copy comments
+	copy(req.Comments, r.Comments)
+	
+	// Convert headers
+	if r.Headers != nil {
+		req.Headers = make(map[string]string)
+		for k, v := range r.Headers {
+			req.Headers[k] = v
+		}
+	}
+	
+	return req
+}
+
+// FromHTTPRequest converts an HTTPRequest to an HTTPFileRequest
+func (r *HTTPFileRequest) FromHTTPRequest(req *HTTPRequest) {
+	r.Method = req.Method
+	r.URL = req.URL
+	r.Body = req.Body
+	r.Name = req.Name
+	r.Path = req.Path
+	r.Tag = req.Tag
+	
+	// Copy comments
+	if len(req.Comments) > 0 {
+		r.Comments = make([]string, len(req.Comments))
+		copy(r.Comments, req.Comments)
+	} else {
+		r.Comments = []string{}
+	}
+	
+	// Convert headers
+	if req.Headers != nil {
+		r.Headers = make(map[string]string)
+		for k, v := range req.Headers {
+			r.Headers[k] = v
+		}
+	} else {
+		r.Headers = make(map[string]string)
+	}
+}
+
+// NewHTTPFileRequestFromHTTPRequest creates a new HTTPFileRequest from an HTTPRequest
+func NewHTTPFileRequestFromHTTPRequest(req *HTTPRequest) *HTTPFileRequest {
+	fileReq := &HTTPFileRequest{}
+	fileReq.FromHTTPRequest(req)
+	return fileReq
 }
