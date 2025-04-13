@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"time"
 )
 
@@ -120,6 +121,13 @@ type SnapshotResult struct {
 	WasCreated    bool          `json:"wasCreated"`
 	UpdateMode    string        `json:"updateMode"`
 	Error         string        `json:"error,omitempty"`
+	
+	// Fields for compatibility
+	Passed        bool          `json:"passed,omitempty"`
+	Updated       bool          `json:"updated,omitempty"`
+	Created       bool          `json:"created,omitempty"`
+	RequestPath   string        `json:"requestPath,omitempty"`
+	RequestMethod string        `json:"requestMethod,omitempty"`
 }
 
 // SnapshotStats tracks statistics for snapshot testing
@@ -132,4 +140,33 @@ type SnapshotStats struct {
 	Errors    int
 	StartTime time.Time
 	EndTime   time.Time
+}
+
+// GetError returns the error as an error interface
+func (sr *SnapshotResult) GetError() error {
+	if sr.Error != "" {
+		return errors.New(sr.Error)
+	}
+	return nil
+}
+
+// SetError sets the error from an error interface
+func (sr *SnapshotResult) SetError(err error) {
+	if err != nil {
+		sr.Error = err.Error()
+	} else {
+		sr.Error = ""
+	}
+}
+
+// SyncCompatibilityFields ensures all compatibility fields are updated
+func (sr *SnapshotResult) SyncCompatibilityFields() {
+	sr.Passed = sr.Matches
+	sr.Updated = sr.WasUpdated
+	sr.Created = sr.WasCreated
+	
+	if sr.Diff != nil {
+		sr.RequestPath = sr.Diff.RequestPath
+		sr.RequestMethod = sr.Diff.RequestMethod
+	}
 }
