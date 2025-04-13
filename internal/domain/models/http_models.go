@@ -14,10 +14,10 @@ type HTTPRequest struct {
 	Auth    *AuthDetails      `json:"auth,omitempty"`
 	
 	// Fields for file format compatibility
-	Name     string      `json:"name,omitempty"`
-	Path     string      `json:"path,omitempty"`
-	Tag      string      `json:"tag,omitempty"`
-	Comments []string    `json:"comments,omitempty"`
+	Name     string    `json:"name,omitempty"`
+	Path     string    `json:"path,omitempty"`
+	Tag      string    `json:"tag,omitempty"`
+	Comments []string  `json:"comments,omitempty"`
 	
 	// Additional fields for variable handling
 	FormValues  map[string]string `json:"formValues,omitempty"`
@@ -61,24 +61,6 @@ type HTTPHeader struct {
 	Value string
 }
 
-// ConvertHeadersToMap converts HTTP headers from slice to map format
-func ConvertHeadersToMap(headers []HTTPHeader) map[string]string {
-	result := make(map[string]string)
-	for _, header := range headers {
-		result[header.Name] = header.Value
-	}
-	return result
-}
-
-// ConvertMapToHeaders converts HTTP headers from map to slice format
-func ConvertMapToHeaders(headers map[string]string) []HTTPHeader {
-	var result []HTTPHeader
-	for name, value := range headers {
-		result = append(result, HTTPHeader{Name: name, Value: value})
-	}
-	return result
-}
-
 // HTTPFileRequest represents an HTTP request in .http file format (for backward compatibility)
 type HTTPFileRequest struct {
 	Name     string
@@ -89,34 +71,6 @@ type HTTPFileRequest struct {
 	Comments []string
 	Tag      string
 	Path     string
-}
-
-// ToHTTPRequest converts an HTTPFileRequest to an HTTPRequest
-func (r *HTTPFileRequest) ToHTTPRequest() *HTTPRequest {
-	return &HTTPRequest{
-		Method:   r.Method,
-		URL:      r.URL,
-		Headers:  ConvertHeadersToMap(r.Headers),
-		Body:     r.Body,
-		Name:     r.Name,
-		Path:     r.Path,
-		Tag:      r.Tag,
-		Comments: r.Comments,
-	}
-}
-
-// FromHTTPRequest creates an HTTPFileRequest from an HTTPRequest
-func FromHTTPRequest(r *HTTPRequest) *HTTPFileRequest {
-	return &HTTPFileRequest{
-		Method:   r.Method,
-		URL:      r.URL,
-		Headers:  ConvertMapToHeaders(r.Headers),
-		Body:     r.Body,
-		Name:     r.Name,
-		Path:     r.Path,
-		Tag:      r.Tag,
-		Comments: r.Comments,
-	}
 }
 
 // HTTPFile represents a collection of HTTP requests to be written to a .http file
@@ -137,4 +91,121 @@ type HTTPCollection struct {
 	RootDir      string
 	Directories  []HTTPDirectory
 	RootFiles    []HTTPFile
+}
+
+// GetHeaderValue gets a header value by name
+func (r *HTTPRequest) GetHeaderValue(name string) string {
+	if r.Headers == nil {
+		return ""
+	}
+	return r.Headers[name]
+}
+
+// SetHeaderValue sets a header value
+func (r *HTTPRequest) SetHeaderValue(name, value string) {
+	if r.Headers == nil {
+		r.Headers = make(map[string]string)
+	}
+	r.Headers[name] = value
+}
+
+// GetHeaderValue gets a header value by name from HTTPFileRequest
+func (r *HTTPFileRequest) GetHeaderValue(name string) string {
+	for _, header := range r.Headers {
+		if header.Name == name {
+			return header.Value
+		}
+	}
+	return ""
+}
+
+// SetHeaderValue sets a header value in HTTPFileRequest
+func (r *HTTPFileRequest) SetHeaderValue(name, value string) {
+	// Check if header already exists
+	for i, header := range r.Headers {
+		if header.Name == name {
+			r.Headers[i].Value = value
+			return
+		}
+	}
+	// Add new header
+	r.Headers = append(r.Headers, HTTPHeader{Name: name, Value: value})
+}
+
+// Clone creates a deep copy of an HTTPRequest
+func (r *HTTPRequest) Clone() *HTTPRequest {
+	clone := &HTTPRequest{
+		Method: r.Method,
+		URL:    r.URL,
+		Body:   r.Body,
+		Name:   r.Name,
+		Path:   r.Path,
+		Tag:    r.Tag,
+	}
+	
+	// Copy headers
+	if r.Headers != nil {
+		clone.Headers = make(map[string]string)
+		for k, v := range r.Headers {
+			clone.Headers[k] = v
+		}
+	}
+	
+	// Copy auth
+	if r.Auth != nil {
+		clone.Auth = &AuthDetails{
+			Type:  r.Auth.Type,
+			Value: r.Auth.Value,
+		}
+	}
+	
+	// Copy comments
+	if len(r.Comments) > 0 {
+		clone.Comments = make([]string, len(r.Comments))
+		copy(clone.Comments, r.Comments)
+	}
+	
+	// Copy form values
+	if r.FormValues != nil {
+		clone.FormValues = make(map[string]string)
+		for k, v := range r.FormValues {
+			clone.FormValues[k] = v
+		}
+	}
+	
+	// Copy query params
+	if r.QueryParams != nil {
+		clone.QueryParams = make(map[string]string)
+		for k, v := range r.QueryParams {
+			clone.QueryParams[k] = v
+		}
+	}
+	
+	return clone
+}
+
+// Clone creates a deep copy of an HTTPFileRequest
+func (r *HTTPFileRequest) Clone() *HTTPFileRequest {
+	clone := &HTTPFileRequest{
+		Name:   r.Name,
+		Method: r.Method,
+		URL:    r.URL,
+		Body:   r.Body,
+		Tag:    r.Tag,
+		Path:   r.Path,
+	}
+	
+	// Copy headers
+	if len(r.Headers) > 0 {
+		clone.Headers = make([]HTTPHeader, len(r.Headers))
+		copy(clone.Headers, r.Headers)
+	}
+	
+	// Copy comments
+	if len(r.Comments) > 0 {
+		clone.Comments = make([]string, len(r.Comments))
+		copy(clone.Comments, r.Comments)
+	}
+	
+	return clone
 }
