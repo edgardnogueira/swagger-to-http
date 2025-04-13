@@ -12,162 +12,257 @@ import (
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 )
 
-// Parser handles parsing of .http files
-type Parser struct{}
+// Parser represents an HTTP file parser
+type Parser struct {
+	commentPattern *regexp.Regexp
+	tagPattern     *regexp.Regexp
+	namePattern    *regexp.Regexp
+	headerPattern  *regexp.Regexp
+	methodPattern  *regexp.Regexp
+}
 
 // NewParser creates a new HTTP file parser
 func NewParser() *Parser {
-	return &Parser{}
+	return &Parser{
+		commentPattern: regexp.MustCompile(`^#\s*(.*)$`),
+		tagPattern:     regexp.MustCompile(`^@tag\s+(.+)$`),
+		namePattern:    regexp.MustCompile(`^@name\s+(.+)$`),
+		headerPattern:  regexp.MustCompile(`^([^:]+):\s*(.+)$`),
+		methodPattern:  regexp.MustCompile(`^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+(.+)$`),
+	}
 }
 
-// ParseFile parses an HTTP file into a collection of requests
+// ParseFile parses an HTTP file from the file system
 func (p *Parser) ParseFile(filePath string) (*models.HTTPFile, error) {
-	// Read file
-	content, err := os.ReadFile(filePath)
+	// Open the file
+	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
+	defer file.Close()
 
-	// Parse content
-	requests, err := p.ParseContent(content, filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create HTTP file
+	// Create an HTTP file with the filename
 	httpFile := &models.HTTPFile{
-		Filename: filepath.Base(filePath),
-		Requests: requests,
+		Filename: filePath,
+		Requests: []models.HTTPRequest{},
+	}
+
+	scanner := bufio.NewScanner(file)
+	var currentRequest *models.HTTPRequest
+	var currentBody []string
+	var readingBody bool
+	var comments []string
+
+	// Parse the file line by line
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Check if this is a request separator
+		if strings.HasPrefix(line, "###") {
+			// Save the current request if there is one
+			if currentRequest != nil {
+				currentRequest.Body = strings.Join(currentBody, "\n")
+				httpFile.Requests = append(httpFile.Requests, *currentRequest)
+			}
+
+			// Reset for the next request
+			currentRequest = nil
+			currentBody = []string{}
+			readingBody = false
+			comments = []string{}
+			continue
+		}
+
+		// Check if this is a comment
+		if matches := p.commentPattern.FindStringSubmatch(line); len(matches) > 1 {
+			comment := matches[1]
+			comments = append(comments, comment)
+			continue
+		}
+
+		// Check if this is a tag
+		if matches := p.tagPattern.FindStringSubmatch(line); len(matches) > 1 {
+			tag := matches[1]
+			if currentRequest == nil {
+				// Create a new request if needed
+				currentRequest = &models.HTTPRequest{
+					Comments: comments,
+					Tag:      tag,
+					Path:     filePath,
+				}
+				comments = []string{}
+			} else {
+				currentRequest.Tag = tag
+			}
+			continue
+		}
+
+		// Check if this is a name
+		if matches := p.namePattern.FindStringSubmatch(line); len(matches) > 1 {
+			name := matches[1]
+			if currentRequest == nil {
+				// Create a new request if needed
+				currentRequest = &models.HTTPRequest{
+					Comments: comments,
+					Name:     name,
+					Path:     filePath,
+				}
+				comments = []string{}
+			} else {
+				currentRequest.Name = name
+			}
+			continue
+		}
+
+		// Handle HTTP method line (GET, POST, etc.)
+		if matches := p.methodPattern.FindStringSubmatch(line); len(matches) > 2 && !readingBody {
+			// Save the current request if there is one
+			if currentRequest != nil {
+				currentRequest.Body = strings.Join(currentBody, "\n")
+				httpFile.Requests = append(httpFile.Requests, *currentRequest)
+			}
+
+			// Create a new request
+			method := matches[1]
+			url := matches[2]
+
+			currentRequest = &models.HTTPRequest{
+				Method:   method,
+				URL:      url,
+				Headers:  []models.HTTPHeader{},
+				Comments: comments,
+				Path:     filePath,
+			}
+
+			// If no explicit name was set, use the path as the name
+			if currentRequest.Name == "" {
+				currentRequest.Name = fmt.Sprintf("%s %s", method, p.simplifyPath(url))
+			}
+
+			// Reset for the new request
+			currentBody = []string{}
+			readingBody = false
+			comments = []string{}
+			continue
+		}
+
+		// Handle headers if not already reading the body
+		if !readingBody && currentRequest != nil {
+			if matches := p.headerPattern.FindStringSubmatch(line); len(matches) > 2 {
+				name := matches[1]
+				value := matches[2]
+				currentRequest.Headers = append(currentRequest.Headers, models.HTTPHeader{
+					Name:  name,
+					Value: value,
+				})
+				continue
+			}
+		}
+
+		// Empty line after headers marks the start of the body or the end of the request
+		if line == "" && currentRequest != nil && !readingBody {
+			if len(currentRequest.Headers) > 0 {
+				readingBody = true
+			}
+			continue
+		}
+
+		// If we're reading the body, add the line to the body
+		if readingBody && currentRequest != nil {
+			currentBody = append(currentBody, line)
+		}
+	}
+
+	// Check for scanner errors
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading file: %w", err)
+	}
+
+	// Save the last request if there is one
+	if currentRequest != nil {
+		currentRequest.Body = strings.Join(currentBody, "\n")
+		httpFile.Requests = append(httpFile.Requests, *currentRequest)
 	}
 
 	return httpFile, nil
 }
 
-// ParseContent parses raw HTTP file content into requests
-func (p *Parser) ParseContent(content []byte, filePath string) ([]models.HTTPRequest, error) {
-	var requests []models.HTTPRequest
-	
-	// Use request separator pattern: ###
-	separator := []byte("###")
-	parts := bytes.Split(content, separator)
-	
-	for i, part := range parts {
-		// Skip empty parts
-		if len(bytes.TrimSpace(part)) == 0 {
-			continue
+// simplifyPath returns a simplified version of a URL path for use as a name
+func (p *Parser) simplifyPath(url string) string {
+	// Remove query parameters
+	path := strings.SplitN(url, "?", 2)[0]
+
+	// Extract just the path part if there's a full URL
+	if strings.HasPrefix(path, "http") {
+		parts := strings.SplitN(path, "/", 4)
+		if len(parts) >= 4 {
+			path = "/" + parts[3]
 		}
-		
-		// Parse the request
-		request, err := p.parseRequest(part, i+1, filePath)
-		if err != nil {
-			return nil, err
-		}
-		
-		requests = append(requests, *request)
 	}
-	
-	return requests, nil
+
+	// Remove trailing slash
+	path = strings.TrimSuffix(path, "/")
+
+	// If path is empty, use the base URL
+	if path == "" {
+		path = "root"
+	}
+
+	// Replace special characters
+	path = strings.ReplaceAll(path, "/", "_")
+	path = strings.ReplaceAll(path, "{", "")
+	path = strings.ReplaceAll(path, "}", "")
+
+	return path
 }
 
-// parseRequest parses a single HTTP request section
-func (p *Parser) parseRequest(content []byte, index int, filePath string) (*models.HTTPRequest, error) {
-	// Create scanner for reading lines
-	scanner := bufio.NewScanner(bytes.NewReader(content))
-	
-	// Create request with default values
-	request := &models.HTTPRequest{
-		Name:     fmt.Sprintf("Request %d", index),
-		Path:     filepath.Base(filePath),
-		Comments: []string{},
-		Headers:  []models.HTTPHeader{},
+// ParseDirectory parses all .http files in a directory
+func (p *Parser) ParseDirectory(dirPath string) ([]*models.HTTPFile, error) {
+	// Find all .http files in the directory
+	matches, err := filepath.Glob(filepath.Join(dirPath, "*.http"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list HTTP files: %w", err)
 	}
-	
-	// State variables
-	lineNum := 0
-	inBody := false
-	var bodyLines []string
-	
-	// Regular expressions for parsing
-	requestLineRegex := regexp.MustCompile(`^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+(.+)$`)
-	headerRegex := regexp.MustCompile(`^([^:]+):\s*(.*)$`)
-	commentRegex := regexp.MustCompile(`^#(.*)$`)
-	nameRegex := regexp.MustCompile(`^@name\s+(.+)$`)
-	tagRegex := regexp.MustCompile(`^@tag\s+(.+)$`)
-	
-	// Process each line
-	for scanner.Scan() {
-		line := scanner.Text()
-		lineNum++
-		
-		// If we're in body mode, collect body lines
-		if inBody {
-			bodyLines = append(bodyLines, line)
-			continue
+
+	// Parse each file
+	var files []*models.HTTPFile
+	for _, match := range matches {
+		file, err := p.ParseFile(match)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse file %s: %w", match, err)
 		}
-		
-		// Empty line indicates start of body section
-		if strings.TrimSpace(line) == "" {
-			inBody = true
-			continue
-		}
-		
-		// Try to match different line types
-		if match := requestLineRegex.FindStringSubmatch(line); match != nil {
-			request.Method = match[1]
-			request.URL = match[2]
-			continue
-		}
-		
-		if match := headerRegex.FindStringSubmatch(line); match != nil {
-			header := models.HTTPHeader{
-				Name:  match[1],
-				Value: match[2],
-			}
-			request.Headers = append(request.Headers, header)
-			continue
-		}
-		
-		if match := commentRegex.FindStringSubmatch(line); match != nil {
-			request.Comments = append(request.Comments, match[1])
-			continue
-		}
-		
-		if match := nameRegex.FindStringSubmatch(line); match != nil {
-			request.Name = match[1]
-			continue
-		}
-		
-		if match := tagRegex.FindStringSubmatch(line); match != nil {
-			request.Tag = match[1]
-			continue
-		}
-		
-		// If we reach here, we couldn't parse the line
-		return nil, fmt.Errorf("invalid line %d: %s", lineNum, line)
+		files = append(files, file)
 	}
-	
-	// Combine body lines
-	if len(bodyLines) > 0 {
-		request.Body = strings.Join(bodyLines, "\n")
+
+	return files, nil
+}
+
+// ParseContent parses raw HTTP file content into requests
+func (p *Parser) ParseContent(content []byte, filePath string) ([]models.HTTPRequest, error) {
+	// Create a temporary file with the content
+	tempDir, err := os.MkdirTemp("", "swagger-to-http")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	
-	// Check that we have the minimum required fields
-	if request.Method == "" || request.URL == "" {
-		return nil, fmt.Errorf("request is missing method or URL")
+	defer os.RemoveAll(tempDir)
+
+	tempFile := filepath.Join(tempDir, "temp.http")
+	if err := os.WriteFile(tempFile, content, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write temp file: %w", err)
 	}
-	
-	// Extract path from URL (simplified)
-	urlParts := strings.Split(request.URL, "://")
-	if len(urlParts) > 1 {
-		pathParts := strings.SplitN(urlParts[1], "/", 2)
-		if len(pathParts) > 1 {
-			request.Path = "/" + pathParts[1]
-		}
-	} else if strings.HasPrefix(request.URL, "/") {
-		request.Path = request.URL
+
+	// Parse the temporary file
+	httpFile, err := p.ParseFile(tempFile)
+	if err != nil {
+		return nil, err
 	}
-	
-	return request, nil
+
+	// Update the file paths to the original
+	for i := range httpFile.Requests {
+		httpFile.Requests[i].Path = filePath
+	}
+
+	return httpFile.Requests, nil
 }
 
 // FindHTTPFiles finds all .http files in a directory (or matching a glob pattern)
