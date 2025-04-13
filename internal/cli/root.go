@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"github.com/edgardnogueira/swagger-to-http/internal/application"
+	"github.com/edgardnogueira/swagger-to-http/internal/infrastructure/http"
 	"github.com/edgardnogueira/swagger-to-http/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -13,7 +15,19 @@ var rootCmd = &cobra.Command{
 }
 
 // Execute runs the root command
-func Execute() error {
+func Execute(
+	configProvider application.ConfigProvider, 
+	httpParser *http.Parser,
+	httpExecutor application.HTTPExecutor,
+	testRunner application.TestRunner,
+	testReporter application.TestReporter,
+) error {
+	// Add snapshot commands
+	InitSnapshotCommands(rootCmd, configProvider, httpExecutor)
+	
+	// Add test commands
+	AddTestCommands(rootCmd, configProvider, testRunner, testReporter)
+
 	return rootCmd.Execute()
 }
 
