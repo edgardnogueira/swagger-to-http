@@ -90,7 +90,7 @@ func (g *HTTPGenerator) Generate(ctx context.Context, doc *models.SwaggerDoc) (*
 	}
 
 	// Create a map to organize requests by tag
-	requestsByTag := make(map[string][]models.HTTPRequest)
+	requestsByTag := make(map[string][]models.HTTPFileRequest)
 
 	// Process each path and operation
 	for path, pathItem := range doc.Paths {
@@ -98,49 +98,56 @@ func (g *HTTPGenerator) Generate(ctx context.Context, doc *models.SwaggerDoc) (*
 			req, err := g.GenerateRequest(ctx, path, &pathItem, "GET", pathItem.Get)
 			if err == nil {
 				tag := g.getTag(pathItem.Get)
-				requestsByTag[tag] = append(requestsByTag[tag], *req)
+				fileReq := req.ToHTTPFileRequest()
+				requestsByTag[tag] = append(requestsByTag[tag], *fileReq)
 			}
 		}
 		if pathItem.Post != nil {
 			req, err := g.GenerateRequest(ctx, path, &pathItem, "POST", pathItem.Post)
 			if err == nil {
 				tag := g.getTag(pathItem.Post)
-				requestsByTag[tag] = append(requestsByTag[tag], *req)
+				fileReq := req.ToHTTPFileRequest()
+				requestsByTag[tag] = append(requestsByTag[tag], *fileReq)
 			}
 		}
 		if pathItem.Put != nil {
 			req, err := g.GenerateRequest(ctx, path, &pathItem, "PUT", pathItem.Put)
 			if err == nil {
 				tag := g.getTag(pathItem.Put)
-				requestsByTag[tag] = append(requestsByTag[tag], *req)
+				fileReq := req.ToHTTPFileRequest()
+				requestsByTag[tag] = append(requestsByTag[tag], *fileReq)
 			}
 		}
 		if pathItem.Delete != nil {
 			req, err := g.GenerateRequest(ctx, path, &pathItem, "DELETE", pathItem.Delete)
 			if err == nil {
 				tag := g.getTag(pathItem.Delete)
-				requestsByTag[tag] = append(requestsByTag[tag], *req)
+				fileReq := req.ToHTTPFileRequest()
+				requestsByTag[tag] = append(requestsByTag[tag], *fileReq)
 			}
 		}
 		if pathItem.Patch != nil {
 			req, err := g.GenerateRequest(ctx, path, &pathItem, "PATCH", pathItem.Patch)
 			if err == nil {
 				tag := g.getTag(pathItem.Patch)
-				requestsByTag[tag] = append(requestsByTag[tag], *req)
+				fileReq := req.ToHTTPFileRequest()
+				requestsByTag[tag] = append(requestsByTag[tag], *fileReq)
 			}
 		}
 		if pathItem.Options != nil {
 			req, err := g.GenerateRequest(ctx, path, &pathItem, "OPTIONS", pathItem.Options)
 			if err == nil {
 				tag := g.getTag(pathItem.Options)
-				requestsByTag[tag] = append(requestsByTag[tag], *req)
+				fileReq := req.ToHTTPFileRequest()
+				requestsByTag[tag] = append(requestsByTag[tag], *fileReq)
 			}
 		}
 		if pathItem.Head != nil {
 			req, err := g.GenerateRequest(ctx, path, &pathItem, "HEAD", pathItem.Head)
 			if err == nil {
 				tag := g.getTag(pathItem.Head)
-				requestsByTag[tag] = append(requestsByTag[tag], *req)
+				fileReq := req.ToHTTPFileRequest()
+				requestsByTag[tag] = append(requestsByTag[tag], *fileReq)
 			}
 		}
 	}
@@ -183,6 +190,7 @@ func (g *HTTPGenerator) GenerateRequest(ctx context.Context, path string, pathIt
 
 	url := g.buildURL(path)
 	headers := g.buildHeaders(operation)
+	headerMap := models.FormatHTTPHeaders(headers)
 	body := g.buildRequestBody(operation)
 	comments := g.buildComments(operation)
 	tag := g.getTag(operation)
@@ -191,7 +199,7 @@ func (g *HTTPGenerator) GenerateRequest(ctx context.Context, path string, pathIt
 		Name:     name,
 		Method:   method,
 		URL:      url,
-		Headers:  headers,
+		Headers:  headerMap,
 		Body:     body,
 		Comments: comments,
 		Tag:      tag,
