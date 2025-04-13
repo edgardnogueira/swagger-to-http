@@ -17,6 +17,10 @@ A tool to convert Swagger/OpenAPI documentation into organized HTTP request file
 - Variable substitution in URLs, headers, and request bodies
 - Environment variable support for configurable requests
 - Integration with Git hooks for automatic updates (coming soon)
+- **NEW**: Schema validation against OpenAPI specifications
+- **NEW**: Sequential tests with dependencies and variable extraction
+- **NEW**: Test assertions with customizable validation rules
+- **NEW**: Continuous testing in watch mode
 
 ## Table of Contents
 
@@ -26,6 +30,7 @@ A tool to convert Swagger/OpenAPI documentation into organized HTTP request file
 - [Configuration](#configuration)
 - [HTTP Executor](#http-executor)
 - [Snapshot Testing](#snapshot-testing)
+- [Advanced Testing Features](#advanced-testing-features)
 - [Examples](#examples)
 - [Project Status](#project-status)
 - [Documentation](#documentation)
@@ -73,6 +78,18 @@ Run snapshot tests on your API:
 swagger-to-http snapshot test http-requests/*.http
 ```
 
+Run tests with schema validation:
+
+```bash
+swagger-to-http test validate --swagger-file swagger.json http-requests/*.http
+```
+
+Execute sequence tests with variable extraction:
+
+```bash
+swagger-to-http test sequence sequence-tests/*.json
+```
+
 ## Usage
 
 ```
@@ -83,11 +100,12 @@ Available Commands:
   generate    Generate HTTP files from a Swagger/OpenAPI document
   help        Help about any command
   snapshot    Snapshot testing commands
+  test        Run HTTP tests
   version     Print the version information
 
 Flags:
-  -h, --help        help for swagger-to-http
-  -v, --version     version for swagger-to-http
+  -h, --help      help for swagger-to-http
+  -v, --version   version for swagger-to-http
 ```
 
 ### Generate Command
@@ -109,28 +127,16 @@ Flags:
   -h, --help                help for generate
 ```
 
-### Snapshot Commands
+### Test Commands
 
 ```
 Usage:
-  swagger-to-http snapshot [command]
+  swagger-to-http test [command]
 
 Available Commands:
-  test        Run snapshot tests
-  update      Update snapshots
-  list        List snapshots
-  cleanup     Cleanup snapshots
-
-Flags:
-  -h, --help   help for snapshot
-```
-
-
-#### Snapshot Test Command
-
-```
-Usage:
-  swagger-to-http snapshot test [file-pattern]
+  list        List available HTTP tests
+  validate    Validate responses against OpenAPI schema
+  sequence    Run test sequences with dependency support
 
 Flags:
   --update string         Update mode: none, all, failed, missing (default "none")
@@ -139,19 +145,50 @@ Flags:
   --fail-on-missing       Fail when snapshot is missing
   --cleanup               Remove unused snapshots after testing
   --timeout duration      HTTP request timeout (default 30s)
+  --parallel              Run tests in parallel
+  --max-concurrent int    Maximum number of concurrent tests (default 5)
+  --stop-on-failure       Stop testing after first failure
+  --tags strings          Filter tests by tags
+  --methods strings       Filter tests by HTTP methods
+  --paths strings         Filter tests by request paths
+  --names strings         Filter tests by test names
+  --report-format string  Report format: console, json, html, junit (default "console")
+  --report-output string  Path to write report file
+  --detailed              Include detailed information in report
+  --watch                 Run in continuous (watch) mode
+  --watch-interval int    Interval between watch checks in milliseconds (default 1000)
   -h, --help              help for test
 ```
 
-#### Snapshot Update Command
+### Schema Validation Command
 
 ```
 Usage:
-  swagger-to-http snapshot update [file-pattern]
+  swagger-to-http test validate [file-patterns]
 
 Flags:
-  --snapshot-dir string   Directory for snapshot storage (default ".snapshots")
-  --timeout duration      HTTP request timeout (default 30s)
-  -h, --help              help for update
+  --swagger-file string    Path to Swagger/OpenAPI file (required)
+  --ignore-props string    Comma-separated properties to ignore in validation
+  --ignore-add-props       Ignore additional properties not in schema
+  --ignore-formats         Ignore format validation (e.g., date, email)
+  --ignore-patterns        Ignore pattern validation
+  --req-props-only         Validate only required properties
+  --ignore-nullable        Ignore nullable field validation
+```
+
+### Test Sequence Command
+
+```
+Usage:
+  swagger-to-http test sequence [file-patterns]
+
+Flags:
+  --variables-path string  Path to load/save variables
+  --save-vars              Save extracted variables to file
+  --var-format string      Variable format (default: ${varname})
+  --fail-fast              Stop sequence on first failure
+  --validate-schema        Validate responses against schema
+  --swagger-file string    Path to Swagger/OpenAPI file
 ```
 
 ## Configuration
@@ -179,7 +216,17 @@ snapshots:
   ignore_headers:
     - Date
     - Set-Cookie
-
+advanced_testing:
+  validate_schema: false
+  schema_validation:
+    ignore_additional_properties: false
+    ignore_formats: false
+    ignore_patterns: false
+    required_properties_only: false
+  test_sequences:
+    variable_format: "${%s}"
+    save_variables: false
+    fail_fast: false
 ```
 
 ## HTTP Executor
@@ -311,6 +358,167 @@ For more configuration options, see the [Configuration Guide](docs/configuration
 
 For more information on snapshot testing, see the [Snapshot Testing Guide](docs/snapshot-testing.md).
 
+## Advanced Testing Features
+
+This new section includes features added in the latest update that enhance the testing capabilities of the tool.
+
+### Schema Validation
+
+Validate HTTP responses against OpenAPI/Swagger schema definitions:
+
+```bash
+swagger-to-http test validate --swagger-file swagger.json http-requests/*.http
+```
+
+Features:
+- Type validation (string, number, boolean, object, array)
+- Required property checking
+- Pattern matching
+- Format validation (date, email, etc.)
+- Configurable validation rules with options to ignore specific validations
+
+### Test Sequences
+
+Run tests in a specific order with dependencies:
+
+```bash
+swagger-to-http test sequence sequence-tests/*.json
+```
+
+Test sequence files are JSON files that define:
+- A series of HTTP requests in a specific order
+- Variable extractions to pass data between requests
+- Wait times between requests
+- Conditional execution based on previous results
+- Schema validation and assertions
+
+Example sequence file:
+```json
+{
+  "name": "User Registration Flow",
+  "description": "Test the complete user registration and login flow",
+  "steps": [
+    {
+      "name": "Register User",
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/users",
+        "headers": {
+          "Content-Type": ["application/json"]
+        },
+        "body": "{\"email\":\"test@example.com\",\"password\":\"password123\"}"
+      },
+      "variables": [
+        {
+          "name": "userId",
+          "source": "body",
+          "path": "id"
+        }
+      ],
+      "expectedStatus": 201
+    },
+    {
+      "name": "Login User",
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/login",
+        "headers": {
+          "Content-Type": ["application/json"]
+        },
+        "body": "{\"email\":\"test@example.com\",\"password\":\"password123\"}"
+      },
+      "variables": [
+        {
+          "name": "token",
+          "source": "body",
+          "path": "token"
+        }
+      ],
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get User Profile",
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/users/${userId}",
+        "headers": {
+          "Authorization": ["Bearer ${token}"]
+        }
+      },
+      "expectedStatus": 200,
+      "schemaValidate": true,
+      "assertions": [
+        {
+          "type": "equals",
+          "source": "body",
+          "path": "email",
+          "value": "test@example.com"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Variable Extraction
+
+Extract variables from HTTP responses for use in subsequent requests:
+
+- JSON path extraction (`$.user.id`, `user.profile.name`)
+- Header extraction
+- Regular expression extraction
+- Automatic variable substitution in URLs, headers, and bodies
+
+### Test Assertions
+
+Define assertions on HTTP responses:
+
+```json
+"assertions": [
+  {
+    "type": "equals",
+    "source": "body",
+    "path": "status",
+    "value": "active"
+  },
+  {
+    "type": "contains",
+    "source": "body",
+    "path": "items",
+    "value": "product1"
+  },
+  {
+    "type": "matches",
+    "source": "header",
+    "path": "Content-Type",
+    "value": "application/json.*"
+  }
+]
+```
+
+Supported assertion types:
+- equals - Exact value matching
+- contains - String contains
+- matches - Regular expression matching
+- exists - Value exists
+- notExists - Value doesn't exist
+- in - Value is in a list
+- lt/lessthan - Numeric less than
+- gt/greaterthan - Numeric greater than
+- null - Value is null
+
+### Continuous Testing in Watch Mode
+
+Run tests continuously as files change:
+
+```bash
+swagger-to-http test --watch http-requests/*.http
+```
+
+Options:
+- --watch-interval - Milliseconds between file checks
+- --watch-paths - Specific paths to watch for changes
+
 ## Examples
 
 We provide various examples to help you get started:
@@ -319,6 +527,8 @@ We provide various examples to help you get started:
 - [Authentication](docs/examples/auth/)
 - [Complex Parameters](docs/examples/parameters/)
 - [Snapshot Testing](docs/examples/snapshot-testing/)
+- [Schema Validation](docs/examples/schema-validation/)
+- [Test Sequences](docs/examples/test-sequences/)
 
 ## Project Status
 
@@ -330,8 +540,9 @@ This project is in active development. The following features are implemented or
 - [x] CLI interface
 - [x] HTTP request execution
 - [x] Response snapshot comparison
+- [x] Schema validation
+- [x] Test sequences and variable extraction
 - [ ] Git hooks integration
-- [ ] Schema validation
 
 ## Documentation
 
@@ -343,6 +554,7 @@ Comprehensive documentation is available in the [docs](docs/) directory:
 - [HTTP File Format](docs/http-file-format.md)
 - [HTTP Executor](docs/http-executor.md)
 - [Snapshot Testing](docs/snapshot-testing.md)
+- [Advanced Testing Features](docs/advanced-testing.md)
 - [Examples](docs/examples/)
 - [API Reference](docs/api-reference.md)
 - [Contributing Guide](docs/contributing.md)

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - Unreleased
+
+### Added
+
+- Schema validation against OpenAPI specifications
+- Sequential tests with dependencies between steps
+- Variable extraction from response body, headers, and status
+- Test assertions with multiple validation types (equals, contains, matches, etc.)
+- Support for watching file changes and running tests continuously
+- Advanced test runner with combined features
+- Test sequence file format for workflow testing
+- Expanded CLI with advanced testing commands
+- Comprehensive documentation for advanced testing features
+- Integration examples for CI/CD pipelines
+
+### Changed
+
+- Enhanced test runner to support schema validation
+- Improved test reporting with more detailed results
+- Updated CLI with more flexible options
+- Expanded README with advanced testing feature descriptions
+
 ## [0.2.0] - Unreleased
 
 ### Added

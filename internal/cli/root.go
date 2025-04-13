@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/edgardnogueira/swagger-to-http/internal/application"
 	"github.com/edgardnogueira/swagger-to-http/internal/infrastructure/http"
+	"github.com/edgardnogueira/swagger-to-http/internal/infrastructure/test"
 	"github.com/edgardnogueira/swagger-to-http/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -21,12 +22,17 @@ func Execute(
 	httpExecutor application.HTTPExecutor,
 	testRunner application.TestRunner,
 	testReporter application.TestReporter,
+	advancedTestRunner *test.AdvancedTestRunnerService,
+	fileWriter application.FileWriter,
 ) error {
 	// Add snapshot commands
 	InitSnapshotCommands(rootCmd, configProvider, httpExecutor)
 	
 	// Add test commands
 	AddTestCommands(rootCmd, configProvider, testRunner, testReporter)
+	
+	// Add advanced test commands
+	AddAdvancedTestCommands(rootCmd, configProvider, advancedTestRunner, testReporter)
 
 	return rootCmd.Execute()
 }
