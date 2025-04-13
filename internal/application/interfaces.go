@@ -2,7 +2,8 @@ package application
 
 import (
 	"context"
-	
+	"io"
+
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 )
 
@@ -76,4 +77,40 @@ type ConfigProvider interface {
 	
 	// GetStringSlice retrieves a string slice configuration value
 	GetStringSlice(key string) []string
+}
+
+// TestRunner defines the interface for running tests
+type TestRunner interface {
+	// RunTests runs tests based on HTTP files and options
+	RunTests(ctx context.Context, patterns []string, options models.TestRunOptions) (*models.TestReport, error)
+	
+	// RunTest runs a single test
+	RunTest(ctx context.Context, request *models.HTTPRequest, options models.TestRunOptions) (*models.TestResult, error)
+	
+	// RunTestFile runs all tests in a file
+	RunTestFile(ctx context.Context, file *models.HTTPFile, options models.TestRunOptions) ([]*models.TestResult, error)
+	
+	// FindTests finds all tests matching the provided patterns
+	FindTests(ctx context.Context, patterns []string, filter models.TestFilter) ([]*models.HTTPFile, error)
+}
+
+// TestReporter defines the interface for generating test reports
+type TestReporter interface {
+	// GenerateReport generates a report in the specified format
+	GenerateReport(ctx context.Context, report *models.TestReport, options models.TestReportOptions) (io.Reader, error)
+	
+	// SaveReport saves a report to the file system
+	SaveReport(ctx context.Context, report *models.TestReport, options models.TestReportOptions) error
+	
+	// PrintReport prints a report to the provided writer
+	PrintReport(ctx context.Context, report *models.TestReport, options models.TestReportOptions, writer io.Writer) error
+}
+
+// TestWatcher defines the interface for continuous test execution
+type TestWatcher interface {
+	// Watch starts watching for changes and running tests
+	Watch(ctx context.Context, patterns []string, options models.TestRunOptions) error
+	
+	// Stop stops watching for changes
+	Stop() error
 }
