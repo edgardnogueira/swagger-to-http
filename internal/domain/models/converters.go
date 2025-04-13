@@ -146,16 +146,6 @@ func ParseHTTPHeaders(headers map[string]string) []HTTPHeader {
 	return result
 }
 
-// StringToBytes converts a string to a byte slice
-func StringToBytes(s string) []byte {
-	return []byte(s)
-}
-
-// BytesToString converts a byte slice to a string
-func BytesToString(b []byte) string {
-	return string(b)
-}
-
 // ConvertHeadersToMap converts a slice of HTTPHeader to a map
 func ConvertHeadersToMap(headers []HTTPHeader) map[string]string {
 	result := make(map[string]string)
