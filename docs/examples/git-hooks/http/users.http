@@ -1,0 +1,53 @@
+###
+# @name ListUsers
+# @tag users
+# List all users
+
+GET https://api.example.com/v1/users
+Accept: application/json
+
+###
+# @name CreateUser
+# @tag users
+# Create a new user
+
+POST https://api.example.com/v1/users
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "John Doe",
+  "email": "john.doe@example.com",
+  "password": "password123"
+}
+
+###
+# @name GetUserById
+# @tag users
+# Get user by ID
+
+GET https://api.example.com/v1/users/{{userId}}
+Accept: application/json
+
+###
+# @name UpdateUser
+# @tag users
+# Update an existing user
+
+PUT https://api.example.com/v1/users/{{userId}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "John Doe Updated",
+  "email": "john.updated@example.com",
+  "password": "newpassword123"
+}
+
+###
+# @name DeleteUser
+# @tag users
+# Delete a user
+
+DELETE https://api.example.com/v1/users/{{userId}}
+Accept: application/json
