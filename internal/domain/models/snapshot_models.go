@@ -1,5 +1,9 @@
 package models
 
+import (
+	"time"
+)
+
 // SnapshotDiff represents the difference between a response and a snapshot
 type SnapshotDiff struct {
 	// Simple version for test reports
@@ -10,12 +14,12 @@ type SnapshotDiff struct {
 	StatusDiff bool              `json:"statusDiff"`
 	
 	// Extended version for detailed analysis
-	RequestPath   string       `json:"requestPath,omitempty"`
-	RequestMethod string       `json:"requestMethod,omitempty"`
+	RequestPath    string      `json:"requestPath,omitempty"`
+	RequestMethod  string      `json:"requestMethod,omitempty"`
 	StatusDiffExt  *StatusDiff  `json:"statusDiffExt,omitempty"`
 	HeaderDiffExt  *HeaderDiff  `json:"headerDiffExt,omitempty"`
 	BodyDiffExt    *BodyDiff    `json:"bodyDiffExt,omitempty"`
-	Equal         bool         `json:"equal,omitempty"`
+	Equal          bool        `json:"equal,omitempty"`
 }
 
 // StatusDiff represents the difference between two status codes
@@ -72,14 +76,60 @@ type ValueDiff struct {
 	Actual   interface{} `json:"actual"`
 }
 
+// SnapshotData represents a stored snapshot of an HTTP response
+type SnapshotData struct {
+	Metadata SnapshotMetadata `json:"metadata"`
+	Content  string           `json:"content"`
+}
+
+// SnapshotMetadata contains metadata about a snapshot
+type SnapshotMetadata struct {
+	RequestPath    string                `json:"requestPath"`
+	RequestMethod  string                `json:"requestMethod"`
+	ContentType    string                `json:"contentType"`
+	StatusCode     int                   `json:"statusCode"`
+	Headers        map[string][]string   `json:"headers"`
+	CreatedAt      time.Time             `json:"createdAt"`
+}
+
+// SnapshotOptions defines options for saving and comparing snapshots
+type SnapshotOptions struct {
+	// UpdateExisting determines whether to update existing snapshots
+	UpdateExisting bool
+	
+	// IgnoreHeaders is a list of headers to ignore during comparison
+	IgnoreHeaders []string
+	
+	// IgnoreFields is a list of JSON fields to ignore during comparison
+	IgnoreFields []string
+	
+	// UpdateMode specifies the update mode (all, failed, none)
+	UpdateMode string
+	
+	// BasePath is the base path for storing snapshots
+	BasePath string
+}
+
 // SnapshotResult represents the result of a snapshot comparison
 type SnapshotResult struct {
-	SnapshotPath  string       `json:"snapshotPath"`
-	Exists        bool         `json:"exists"`
-	Matches       bool         `json:"matches"`
+	SnapshotPath  string        `json:"snapshotPath"`
+	Exists        bool          `json:"exists"`
+	Matches       bool          `json:"matches"`
 	Diff          *SnapshotDiff `json:"diff,omitempty"`
-	WasUpdated    bool         `json:"wasUpdated"`
-	WasCreated    bool         `json:"wasCreated"`
-	UpdateMode    string       `json:"updateMode"`
-	Error         string       `json:"error,omitempty"`
+	WasUpdated    bool          `json:"wasUpdated"`
+	WasCreated    bool          `json:"wasCreated"`
+	UpdateMode    string        `json:"updateMode"`
+	Error         string        `json:"error,omitempty"`
+}
+
+// SnapshotStats tracks statistics for snapshot testing
+type SnapshotStats struct {
+	Total     int
+	Passed    int
+	Failed    int
+	Updated   int
+	Created   int
+	Errors    int
+	StartTime time.Time
+	EndTime   time.Time
 }
