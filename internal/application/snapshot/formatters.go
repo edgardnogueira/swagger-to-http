@@ -1,389 +1,668 @@
 package snapshot
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
-// ResponseFormatter defines the interface for formatting and comparing response bodies
+// ResponseFormatter defines the interface for formatting HTTP responses in snapshots
 type ResponseFormatter interface {
-	// Format formats a response body for storage
-	Format(body []byte) ([]byte, error)
-	
-	// Compare compares two response bodies and returns their differences
-	Compare(expected, actual []byte) *models.BodyDiff
+	// Format converts an HTTP response to a string representation
+	Format(response *models.HTTPResponse) (string, error)
+
+	// Parse converts a string representation back to an HTTP response
+	Parse(content string) (*models.HTTPResponse, error)
+
+	// Compare compares two HTTP responses and returns a comparison result
+	Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error)
 }
 
-// JSONFormatter formats and compares JSON response bodies
-type JSONFormatter struct{}
-
-// Format formats a JSON response body by parsing and re-serializing in a normalized format
-func (f *JSONFormatter) Format(body []byte) ([]byte, error) {
-	var data interface{}
-	
-	if len(body) == 0 {
-		return []byte("{}"), nil
-	}
-	
-	// Parse JSON
-	err := json.Unmarshal(body, &data)
-	if err != nil {
-		return body, fmt.Errorf("failed to parse JSON: %w", err)
-	}
-	
-	// Re-serialize with consistent indentation
-	normalized, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return body, fmt.Errorf("failed to normalize JSON: %w", err)
-	}
-	
-	return normalized, nil
+// ComparisonResult represents the result of comparing two HTTP responses
+type ComparisonResult struct {
+	Matches   bool
+	Diff      string
+	StatusMatch bool
+	HeadersMatch bool
+	BodyMatch    bool
 }
 
-// Compare compares two JSON response bodies
-func (f *JSONFormatter) Compare(expected, actual []byte) *models.BodyDiff {
-	diff := &models.BodyDiff{
-		ContentType:      "application/json",
-		ExpectedSize:     len(expected),
-		ActualSize:       len(actual),
-		ExpectedContent:  string(expected),
-		ActualContent:    string(actual),
-		Equal:            bytes.Equal(expected, actual),
+// formatters is a map of content types to formatters
+var formatters = map[string]ResponseFormatter{
+	"json":    &JSONFormatter{},
+	"xml":     &XMLFormatter{},
+	"text":    &TextFormatter{},
+	"html":    &HTMLFormatter{},
+	"binary":  &BinaryFormatter{},
+	"default": &DefaultFormatter{},
+}
+
+// GetFormatter returns a formatter for the specified content type
+func GetFormatter(contentType string) (ResponseFormatter, error) {
+	// Clean up the content type
+	contentType = strings.ToLower(contentType)
+	contentType = strings.Split(contentType, ";")[0]
+	contentType = strings.TrimSpace(contentType)
+
+	// Map content type to formatter type
+	formatterType := "default"
+	if strings.Contains(contentType, "json") {
+		formatterType = "json"
+	} else if strings.Contains(contentType, "xml") {
+		formatterType = "xml"
+	} else if strings.Contains(contentType, "text") {
+		formatterType = "text"
+	} else if strings.Contains(contentType, "html") {
+		formatterType = "html"
+	} else if strings.Contains(contentType, "octet-stream") || 
+		      strings.Contains(contentType, "application/pdf") || 
+		      strings.Contains(contentType, "image/") {
+		formatterType = "binary"
 	}
-	
-	// If they're equal, no need for detailed comparison
-	if diff.Equal {
-		return diff
+
+	// Get the formatter
+	formatter, ok := formatters[formatterType]
+	if !ok {
+		return nil, fmt.Errorf("no formatter found for content type: %s", contentType)
 	}
+
+	return formatter, nil
+}
+
+// BaseFormatter provides common functionality for all formatters
+type BaseFormatter struct{}
+
+// Format formats the response headers and metadata
+func (f *BaseFormatter) formatHeaders(response *models.HTTPResponse) string {
+	var sb strings.Builder
+
+	// Add status line
+	sb.WriteString(fmt.Sprintf("HTTP %d %s\n", response.StatusCode, response.Status))
 	
-	// Create text diff
+	// Add headers
+	for key, values := range response.Headers {
+		for _, value := range values {
+			sb.WriteString(fmt.Sprintf("%s: %s\n", key, value))
+		}
+	}
+
+	// Add empty line to separate headers from body
+	sb.WriteString("\n")
+
+	return sb.String()
+}
+
+// parseHeaders parses the response headers and metadata
+func (f *BaseFormatter) parseHeaders(content string) (*models.HTTPResponse, string, error) {
+	response := &models.HTTPResponse{
+		Headers: make(map[string][]string),
+	}
+
+	// Split the content into lines
+	lines := strings.Split(content, "\n")
+	lineIdx := 0
+
+	// Parse the status line
+	if lineIdx < len(lines) {
+		statusLine := lines[lineIdx]
+		lineIdx++
+
+		if strings.HasPrefix(statusLine, "HTTP ") {
+			// Parse status code and text
+			parts := strings.SplitN(statusLine, " ", 3)
+			if len(parts) >= 3 {
+				status := parts[2]
+				statusCode := 0
+				fmt.Sscanf(parts[1], "%d", &statusCode)
+
+				response.Status = status
+				response.StatusCode = statusCode
+			}
+		}
+	}
+
+	// Parse headers
+	for lineIdx < len(lines) {
+		line := lines[lineIdx]
+		lineIdx++
+
+		// Empty line indicates end of headers
+		if line == "" {
+			break
+		}
+
+		// Parse header line
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			key := parts[0]
+			value := strings.TrimSpace(parts[1])
+
+			// Add to headers
+			response.Headers[key] = append(response.Headers[key], value)
+		}
+	}
+
+	// Return the remaining content as the body
+	body := strings.Join(lines[lineIdx:], "\n")
+
+	return response, body, nil
+}
+
+// createDiff creates a human-readable diff between two strings
+func (f *BaseFormatter) createDiff(expected, actual string) string {
 	dmp := diffmatchpatch.New()
-	diffs := dmp.DiffMain(diff.ExpectedContent, diff.ActualContent, false)
-	diff.DiffContent = dmp.DiffPrettyText(diffs)
-	
-	// Try to parse both as JSON for structural comparison
-	var expectedJSON, actualJSON interface{}
-	jsonDiff := &models.JsonDiff{
-		MissingFields:    []string{},
-		ExtraFields:      []string{},
-		DifferentTypes:   make(map[string]models.TypeDiff),
-		DifferentValues:  make(map[string]models.ValueDiff),
-		Equal:            false,
-	}
-	
-	expectedErr := json.Unmarshal(expected, &expectedJSON)
-	actualErr := json.Unmarshal(actual, &actualJSON)
-	
-	// Only do JSON-specific comparison if both are valid JSON
-	if expectedErr == nil && actualErr == nil {
-		compareJSON("", expectedJSON, actualJSON, jsonDiff)
-		diff.JsonDiff = jsonDiff
-	}
-	
-	return diff
+	diffs := dmp.DiffMain(expected, actual, false)
+	return dmp.DiffPrettyText(diffs)
 }
 
-// compareJSON recursively compares two JSON objects and records differences
-func compareJSON(path string, expected, actual interface{}, diff *models.JsonDiff) {
-	// Helper to handle path creation
-	getPath := func(base, key string) string {
-		if base == "" {
-			return key
-		}
-		return base + "." + key
+// compareHeaders compares two sets of headers, ignoring unimportant ones
+func (f *BaseFormatter) compareHeaders(expected, actual map[string][]string) bool {
+	// Headers to ignore in comparison
+	ignoreHeaders := map[string]bool{
+		"Date":           true,
+		"Content-Length": true,
+		"Server":         true,
+		"Connection":     true,
 	}
-	
-	// Handle different types of expected and actual
-	switch expectedTyped := expected.(type) {
-	case map[string]interface{}:
-		// Check if actual is also a map
-		actualMap, ok := actual.(map[string]interface{})
-		if !ok {
-			diff.DifferentTypes[path] = models.TypeDiff{
-				ExpectedType: "object",
-				ActualType:   getTypeName(actual),
-			}
-			return
+
+	// Check if all expected headers are in actual
+	for key, expectedValues := range expected {
+		// Skip ignored headers
+		if ignoreHeaders[key] {
+			continue
 		}
-		
-		// Check for missing and different fields
-		for key, expectedValue := range expectedTyped {
-			fieldPath := getPath(path, key)
-			
-			actualValue, exists := actualMap[key]
-			if !exists {
-				diff.MissingFields = append(diff.MissingFields, fieldPath)
-			} else {
-				compareJSON(fieldPath, expectedValue, actualValue, diff)
-			}
+
+		actualValues, exists := actual[key]
+		if !exists {
+			return false
 		}
-		
-		// Check for extra fields
-		for key := range actualMap {
-			fieldPath := getPath(path, key)
-			if _, exists := expectedTyped[key]; !exists {
-				diff.ExtraFields = append(diff.ExtraFields, fieldPath)
-			}
-		}
-		
-	case []interface{}:
-		// Check if actual is also an array
-		actualArray, ok := actual.([]interface{})
-		if !ok {
-			diff.DifferentTypes[path] = models.TypeDiff{
-				ExpectedType: "array",
-				ActualType:   getTypeName(actual),
-			}
-			return
-		}
-		
-		// Compare array lengths
-		if len(expectedTyped) != len(actualArray) {
-			diff.DifferentValues[path] = models.ValueDiff{
-				Expected: fmt.Sprintf("array[%d]", len(expectedTyped)),
-				Actual:   fmt.Sprintf("array[%d]", len(actualArray)),
-			}
-		}
-		
-		// Compare elements up to the length of the shorter array
-		minLen := len(expectedTyped)
-		if len(actualArray) < minLen {
-			minLen = len(actualArray)
-		}
-		
-		for i := 0; i < minLen; i++ {
-			indexPath := fmt.Sprintf("%s[%d]", path, i)
-			compareJSON(indexPath, expectedTyped[i], actualArray[i], diff)
-		}
-		
-	default:
-		// For primitive values, do direct comparison
-		if !areValuesEqual(expected, actual) {
-			diff.DifferentValues[path] = models.ValueDiff{
-				Expected: expected,
-				Actual:   actual,
-			}
+
+		// Compare header values
+		if !equalStringSlices(expectedValues, actualValues) {
+			return false
 		}
 	}
+
+	// Check if actual has additional headers not in expected
+	for key := range actual {
+		// Skip ignored headers
+		if ignoreHeaders[key] {
+			continue
+		}
+
+		_, exists := expected[key]
+		if !exists {
+			return false
+		}
+	}
+
+	return true
 }
 
-// getTypeName returns the type name of a value as a string
-func getTypeName(value interface{}) string {
-	if value == nil {
-		return "null"
-	}
-	
-	switch value.(type) {
-	case map[string]interface{}:
-		return "object"
-	case []interface{}:
-		return "array"
-	case string:
-		return "string"
-	case float64, float32:
-		return "number"
-	case int, int64, int32:
-		return "number"
-	case bool:
-		return "boolean"
-	default:
-		return fmt.Sprintf("%T", value)
-	}
-}
-
-// areValuesEqual compares two primitive values for equality
-func areValuesEqual(a, b interface{}) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
+// equalStringSlices compares two string slices for equality
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	
-	return a == b
-}
 
-// XMLFormatter formats and compares XML response bodies
-type XMLFormatter struct{}
-
-// Format formats an XML response body
-func (f *XMLFormatter) Format(body []byte) ([]byte, error) {
-	// For now, just normalize whitespace
-	if len(body) == 0 {
-		return []byte("</>"), nil
-	}
-	
-	normalized := normalizeXML(body)
-	return normalized, nil
-}
-
-// normalizeXML performs basic XML normalization
-func normalizeXML(xml []byte) []byte {
-	// This is a simplified implementation
-	// A full implementation would use a proper XML parser
-	content := string(xml)
-	
-	// Normalize line endings
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	
-	// Remove excessive whitespace
-	content = strings.TrimSpace(content)
-	
-	return []byte(content)
-}
-
-// Compare compares two XML response bodies
-func (f *XMLFormatter) Compare(expected, actual []byte) *models.BodyDiff {
-	diff := &models.BodyDiff{
-		ContentType:      "application/xml",
-		ExpectedSize:     len(expected),
-		ActualSize:       len(actual),
-		ExpectedContent:  string(expected),
-		ActualContent:    string(actual),
-		Equal:            bytes.Equal(expected, actual),
-	}
-	
-	if !diff.Equal {
-		// Create text diff
-		dmp := diffmatchpatch.New()
-		diffs := dmp.DiffMain(diff.ExpectedContent, diff.ActualContent, false)
-		diff.DiffContent = dmp.DiffPrettyText(diffs)
-	}
-	
-	return diff
-}
-
-// HTMLFormatter formats and compares HTML response bodies
-type HTMLFormatter struct{}
-
-// Format formats an HTML response body
-func (f *HTMLFormatter) Format(body []byte) ([]byte, error) {
-	if len(body) == 0 {
-		return []byte("<!DOCTYPE html><html></html>"), nil
-	}
-	
-	// For now, just normalize whitespace
-	return normalizeHTML(body), nil
-}
-
-// normalizeHTML performs basic HTML normalization
-func normalizeHTML(html []byte) []byte {
-	// This is a simplified implementation
-	// A full implementation would use a proper HTML parser
-	content := string(html)
-	
-	// Normalize line endings
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	
-	// Remove excessive whitespace
-	content = strings.TrimSpace(content)
-	
-	return []byte(content)
-}
-
-// Compare compares two HTML response bodies
-func (f *HTMLFormatter) Compare(expected, actual []byte) *models.BodyDiff {
-	diff := &models.BodyDiff{
-		ContentType:      "text/html",
-		ExpectedSize:     len(expected),
-		ActualSize:       len(actual),
-		ExpectedContent:  string(expected),
-		ActualContent:    string(actual),
-		Equal:            bytes.Equal(expected, actual),
-	}
-	
-	if !diff.Equal {
-		// Create text diff
-		dmp := diffmatchpatch.New()
-		diffs := dmp.DiffMain(diff.ExpectedContent, diff.ActualContent, false)
-		diff.DiffContent = dmp.DiffPrettyText(diffs)
-	}
-	
-	return diff
-}
-
-// TextFormatter formats and compares text response bodies
-type TextFormatter struct{}
-
-// Format formats a text response body
-func (f *TextFormatter) Format(body []byte) ([]byte, error) {
-	if len(body) == 0 {
-		return []byte(""), nil
-	}
-	
-	// Normalize line endings
-	content := string(body)
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	
-	return []byte(content), nil
-}
-
-// Compare compares two text response bodies
-func (f *TextFormatter) Compare(expected, actual []byte) *models.BodyDiff {
-	diff := &models.BodyDiff{
-		ContentType:      "text/plain",
-		ExpectedSize:     len(expected),
-		ActualSize:       len(actual),
-		ExpectedContent:  string(expected),
-		ActualContent:    string(actual),
-		Equal:            bytes.Equal(expected, actual),
-	}
-	
-	if !diff.Equal {
-		// Create text diff
-		dmp := diffmatchpatch.New()
-		diffs := dmp.DiffMain(diff.ExpectedContent, diff.ActualContent, false)
-		diff.DiffContent = dmp.DiffPrettyText(diffs)
-	}
-	
-	return diff
-}
-
-// BinaryFormatter formats and compares binary response bodies
-type BinaryFormatter struct{}
-
-// Format formats a binary response body
-func (f *BinaryFormatter) Format(body []byte) ([]byte, error) {
-	return body, nil
-}
-
-// Compare compares two binary response bodies
-func (f *BinaryFormatter) Compare(expected, actual []byte) *models.BodyDiff {
-	diff := &models.BodyDiff{
-		ContentType:      "application/octet-stream",
-		ExpectedSize:     len(expected),
-		ActualSize:       len(actual),
-		Equal:            bytes.Equal(expected, actual),
-	}
-	
-	// For binary content, don't include the full content as it could be large
-	// and not meaningful in text form
-	diff.ExpectedContent = fmt.Sprintf("[Binary data, %d bytes]", diff.ExpectedSize)
-	diff.ActualContent = fmt.Sprintf("[Binary data, %d bytes]", diff.ActualSize)
-	
-	if !diff.Equal {
-		// Show a basic hex diff for small binary files
-		if len(expected) <= 1024 && len(actual) <= 1024 {
-			dmp := diffmatchpatch.New()
-			diffs := dmp.DiffMain(
-				fmt.Sprintf("%X", expected),
-				fmt.Sprintf("%X", actual),
-				false,
-			)
-			diff.DiffContent = dmp.DiffPrettyText(diffs)
-		} else {
-			diff.DiffContent = "Binary content differs (sizes: expected=" + 
-				fmt.Sprintf("%d", diff.ExpectedSize) + 
-				" actual=" + 
-				fmt.Sprintf("%d", diff.ActualSize) + ")"
+	for i := range a {
+		if a[i] != b[i] {
+			return false
 		}
 	}
-	
-	return diff
+
+	return true
+}
+
+// JSONFormatter formats JSON responses
+type JSONFormatter struct {
+	BaseFormatter
+}
+
+// Format converts an HTTP response to a string representation
+func (f *JSONFormatter) Format(response *models.HTTPResponse) (string, error) {
+	var sb strings.Builder
+
+	// Add headers
+	sb.WriteString(f.formatHeaders(response))
+
+	// Format JSON body for readability
+	if response.Body != "" {
+		var parsedJSON interface{}
+
+		if err := json.Unmarshal([]byte(response.Body), &parsedJSON); err == nil {
+			// Pretty-print the JSON
+			formattedJSON, err := json.MarshalIndent(parsedJSON, "", "  ")
+			if err == nil {
+				sb.Write(formattedJSON)
+			} else {
+				// Fallback to original body if formatting fails
+				sb.WriteString(response.Body)
+			}
+		} else {
+			// Fallback to original body if parsing fails
+			sb.WriteString(response.Body)
+		}
+	}
+
+	return sb.String(), nil
+}
+
+// Parse converts a string representation back to an HTTP response
+func (f *JSONFormatter) Parse(content string) (*models.HTTPResponse, error) {
+	response, bodyContent, err := f.parseHeaders(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the body
+	response.Body = bodyContent
+
+	// Try to normalize JSON for consistent comparison
+	if bodyContent != "" {
+		var parsedJSON interface{}
+
+		if err := json.Unmarshal([]byte(bodyContent), &parsedJSON); err == nil {
+			// Normalize the JSON by re-serializing it
+			normalizedJSON, err := json.Marshal(parsedJSON)
+			if err == nil {
+				response.Body = string(normalizedJSON)
+			}
+		}
+	}
+
+	return response, nil
+}
+
+// Compare compares two HTTP responses and returns a comparison result
+func (f *JSONFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
+	result := &ComparisonResult{
+		Matches: true,
+	}
+
+	// Compare status codes
+	result.StatusMatch = expected.StatusCode == actual.StatusCode
+	if !result.StatusMatch {
+		result.Matches = false
+		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+			expected.StatusCode, actual.StatusCode)
+	}
+
+	// Compare headers
+	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
+	if !result.HeadersMatch {
+		result.Matches = false
+		result.Diff += "Headers mismatch\n"
+	}
+
+	// Compare bodies
+	if expected.Body != "" || actual.Body != "" {
+		// Parse both bodies as JSON for comparison
+		var expectedJSON, actualJSON interface{}
+
+		expectedErr := json.Unmarshal([]byte(expected.Body), &expectedJSON)
+		actualErr := json.Unmarshal([]byte(actual.Body), &actualJSON)
+
+		if expectedErr == nil && actualErr == nil {
+			// Both are valid JSON, compare as objects
+			expectedBytes, _ := json.MarshalIndent(expectedJSON, "", "  ")
+			actualBytes, _ := json.MarshalIndent(actualJSON, "", "  ")
+
+			if string(expectedBytes) == string(actualBytes) {
+				result.BodyMatch = true
+			} else {
+				result.BodyMatch = false
+				result.Matches = false
+				result.Diff += "JSON body mismatch:\n"
+				result.Diff += f.createDiff(string(expectedBytes), string(actualBytes))
+			}
+		} else {
+			// Fall back to string comparison
+			if expected.Body == actual.Body {
+				result.BodyMatch = true
+			} else {
+				result.BodyMatch = false
+				result.Matches = false
+				result.Diff += "Body mismatch:\n"
+				result.Diff += f.createDiff(expected.Body, actual.Body)
+			}
+		}
+	} else {
+		// Both bodies are empty
+		result.BodyMatch = true
+	}
+
+	return result, nil
+}
+
+// XMLFormatter formats XML responses
+type XMLFormatter struct {
+	BaseFormatter
+}
+
+// Format converts an HTTP response to a string representation
+func (f *XMLFormatter) Format(response *models.HTTPResponse) (string, error) {
+	var sb strings.Builder
+
+	// Add headers
+	sb.WriteString(f.formatHeaders(response))
+
+	// Add the XML body (no special formatting for now)
+	sb.WriteString(response.Body)
+
+	return sb.String(), nil
+}
+
+// Parse converts a string representation back to an HTTP response
+func (f *XMLFormatter) Parse(content string) (*models.HTTPResponse, error) {
+	response, bodyContent, err := f.parseHeaders(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the body
+	response.Body = bodyContent
+
+	return response, nil
+}
+
+// Compare compares two HTTP responses and returns a comparison result
+func (f *XMLFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
+	result := &ComparisonResult{
+		Matches: true,
+	}
+
+	// Compare status codes
+	result.StatusMatch = expected.StatusCode == actual.StatusCode
+	if !result.StatusMatch {
+		result.Matches = false
+		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+			expected.StatusCode, actual.StatusCode)
+	}
+
+	// Compare headers
+	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
+	if !result.HeadersMatch {
+		result.Matches = false
+		result.Diff += "Headers mismatch\n"
+	}
+
+	// Compare bodies
+	if expected.Body == actual.Body {
+		result.BodyMatch = true
+	} else {
+		result.BodyMatch = false
+		result.Matches = false
+		result.Diff += "XML body mismatch:\n"
+		result.Diff += f.createDiff(expected.Body, actual.Body)
+	}
+
+	return result, nil
+}
+
+// TextFormatter formats plain text responses
+type TextFormatter struct {
+	BaseFormatter
+}
+
+// Format converts an HTTP response to a string representation
+func (f *TextFormatter) Format(response *models.HTTPResponse) (string, error) {
+	var sb strings.Builder
+
+	// Add headers
+	sb.WriteString(f.formatHeaders(response))
+
+	// Add the text body
+	sb.WriteString(response.Body)
+
+	return sb.String(), nil
+}
+
+// Parse converts a string representation back to an HTTP response
+func (f *TextFormatter) Parse(content string) (*models.HTTPResponse, error) {
+	response, bodyContent, err := f.parseHeaders(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the body
+	response.Body = bodyContent
+
+	return response, nil
+}
+
+// Compare compares two HTTP responses and returns a comparison result
+func (f *TextFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
+	result := &ComparisonResult{
+		Matches: true,
+	}
+
+	// Compare status codes
+	result.StatusMatch = expected.StatusCode == actual.StatusCode
+	if !result.StatusMatch {
+		result.Matches = false
+		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+			expected.StatusCode, actual.StatusCode)
+	}
+
+	// Compare headers
+	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
+	if !result.HeadersMatch {
+		result.Matches = false
+		result.Diff += "Headers mismatch\n"
+	}
+
+	// Compare bodies
+	if expected.Body == actual.Body {
+		result.BodyMatch = true
+	} else {
+		result.BodyMatch = false
+		result.Matches = false
+		result.Diff += "Text body mismatch:\n"
+		result.Diff += f.createDiff(expected.Body, actual.Body)
+	}
+
+	return result, nil
+}
+
+// HTMLFormatter formats HTML responses
+type HTMLFormatter struct {
+	BaseFormatter
+}
+
+// Format converts an HTTP response to a string representation
+func (f *HTMLFormatter) Format(response *models.HTTPResponse) (string, error) {
+	var sb strings.Builder
+
+	// Add headers
+	sb.WriteString(f.formatHeaders(response))
+
+	// Add the HTML body (no special formatting for now)
+	sb.WriteString(response.Body)
+
+	return sb.String(), nil
+}
+
+// Parse converts a string representation back to an HTTP response
+func (f *HTMLFormatter) Parse(content string) (*models.HTTPResponse, error) {
+	response, bodyContent, err := f.parseHeaders(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the body
+	response.Body = bodyContent
+
+	return response, nil
+}
+
+// Compare compares two HTTP responses and returns a comparison result
+func (f *HTMLFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
+	result := &ComparisonResult{
+		Matches: true,
+	}
+
+	// Compare status codes
+	result.StatusMatch = expected.StatusCode == actual.StatusCode
+	if !result.StatusMatch {
+		result.Matches = false
+		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+			expected.StatusCode, actual.StatusCode)
+	}
+
+	// Compare headers
+	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
+	if !result.HeadersMatch {
+		result.Matches = false
+		result.Diff += "Headers mismatch\n"
+	}
+
+	// Compare bodies
+	if expected.Body == actual.Body {
+		result.BodyMatch = true
+	} else {
+		result.BodyMatch = false
+		result.Matches = false
+		result.Diff += "HTML body mismatch:\n"
+		result.Diff += f.createDiff(expected.Body, actual.Body)
+	}
+
+	return result, nil
+}
+
+// BinaryFormatter formats binary responses
+type BinaryFormatter struct {
+	BaseFormatter
+}
+
+// Format converts an HTTP response to a string representation
+func (f *BinaryFormatter) Format(response *models.HTTPResponse) (string, error) {
+	var sb strings.Builder
+
+	// Add headers
+	sb.WriteString(f.formatHeaders(response))
+
+	// For binary data, just add a placeholder
+	sb.WriteString(fmt.Sprintf("[Binary data, %d bytes]", len(response.Body)))
+
+	return sb.String(), nil
+}
+
+// Parse converts a string representation back to an HTTP response
+func (f *BinaryFormatter) Parse(content string) (*models.HTTPResponse, error) {
+	response, _, err := f.parseHeaders(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// For binary data, we can't restore the actual content from the snapshot
+	// So we just set the body to an empty string
+	response.Body = ""
+
+	return response, nil
+}
+
+// Compare compares two HTTP responses and returns a comparison result
+func (f *BinaryFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
+	result := &ComparisonResult{
+		Matches: true,
+	}
+
+	// Compare status codes
+	result.StatusMatch = expected.StatusCode == actual.StatusCode
+	if !result.StatusMatch {
+		result.Matches = false
+		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+			expected.StatusCode, actual.StatusCode)
+	}
+
+	// Compare headers
+	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
+	if !result.HeadersMatch {
+		result.Matches = false
+		result.Diff += "Headers mismatch\n"
+	}
+
+	// For binary data, we only compare lengths
+	expectedLen := len(expected.Body)
+	actualLen := len(actual.Body)
+
+	if expectedLen == actualLen {
+		result.BodyMatch = true
+	} else {
+		result.BodyMatch = false
+		result.Matches = false
+		result.Diff += fmt.Sprintf("Binary data size mismatch: expected %d bytes, got %d bytes\n", 
+			expectedLen, actualLen)
+	}
+
+	return result, nil
+}
+
+// DefaultFormatter is a fallback formatter for unknown content types
+type DefaultFormatter struct {
+	BaseFormatter
+}
+
+// Format converts an HTTP response to a string representation
+func (f *DefaultFormatter) Format(response *models.HTTPResponse) (string, error) {
+	var sb strings.Builder
+
+	// Add headers
+	sb.WriteString(f.formatHeaders(response))
+
+	// Add the body as is
+	sb.WriteString(response.Body)
+
+	return sb.String(), nil
+}
+
+// Parse converts a string representation back to an HTTP response
+func (f *DefaultFormatter) Parse(content string) (*models.HTTPResponse, error) {
+	response, bodyContent, err := f.parseHeaders(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the body
+	response.Body = bodyContent
+
+	return response, nil
+}
+
+// Compare compares two HTTP responses and returns a comparison result
+func (f *DefaultFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
+	result := &ComparisonResult{
+		Matches: true,
+	}
+
+	// Compare status codes
+	result.StatusMatch = expected.StatusCode == actual.StatusCode
+	if !result.StatusMatch {
+		result.Matches = false
+		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+			expected.StatusCode, actual.StatusCode)
+	}
+
+	// Compare headers
+	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
+	if !result.HeadersMatch {
+		result.Matches = false
+		result.Diff += "Headers mismatch\n"
+	}
+
+	// Compare bodies
+	if expected.Body == actual.Body {
+		result.BodyMatch = true
+	} else {
+		result.BodyMatch = false
+		result.Matches = false
+		result.Diff += "Body mismatch:\n"
+		result.Diff += f.createDiff(expected.Body, actual.Body)
+	}
+
+	return result, nil
 }

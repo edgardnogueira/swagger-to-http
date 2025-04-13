@@ -33,6 +33,9 @@ func Execute(
 	
 	// Add advanced test commands
 	AddAdvancedTestCommands(rootCmd, configProvider, advancedTestRunner, testReporter)
+	
+	// Add hooks commands
+	rootCmd.AddCommand(setupHooksCmd())
 
 	return rootCmd.Execute()
 }

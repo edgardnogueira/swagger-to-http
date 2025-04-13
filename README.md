@@ -16,7 +16,7 @@ A tool to convert Swagger/OpenAPI documentation into organized HTTP request file
 - Snapshot testing with content-type aware comparison
 - Variable substitution in URLs, headers, and request bodies
 - Environment variable support for configurable requests
-- Integration with Git hooks for automatic updates (coming soon)
+- **NEW**: Git hooks integration for automatic updates
 - **NEW**: Schema validation against OpenAPI specifications
 - **NEW**: Sequential tests with dependencies and variable extraction
 - **NEW**: Test assertions with customizable validation rules
@@ -31,6 +31,7 @@ A tool to convert Swagger/OpenAPI documentation into organized HTTP request file
 - [HTTP Executor](#http-executor)
 - [Snapshot Testing](#snapshot-testing)
 - [Advanced Testing Features](#advanced-testing-features)
+- [Git Hooks Integration](#git-hooks-integration)
 - [Examples](#examples)
 - [Project Status](#project-status)
 - [Documentation](#documentation)
@@ -90,6 +91,14 @@ Execute sequence tests with variable extraction:
 swagger-to-http test sequence sequence-tests/*.json
 ```
 
+Integrate with Git hooks to automatically update HTTP files:
+
+```bash
+# Install Git hooks
+chmod +x hooks/install.sh
+./hooks/install.sh
+```
+
 ## Usage
 
 ```
@@ -115,16 +124,16 @@ Usage:
   swagger-to-http generate [flags]
 
 Flags:
-  -f, --file string         Swagger/OpenAPI file to process (required if url not provided)
-  -u, --url string          URL to Swagger/OpenAPI document (required if file not provided)
-  -o, --output string       Output directory for HTTP files (default "http-requests")
-  -b, --base-url string     Base URL for requests (overrides the one in the Swagger doc)
-  -t, --default-tag string  Default tag for operations without tags (default "default")
-  -i, --indent-json         Indent JSON in request bodies (default true)
-      --auth                Include authentication header in requests
-      --auth-header string  Authentication header name (default "Authorization")
-      --auth-token string   Authentication token value
-  -h, --help                help for generate
+  -f, --file string        Swagger/OpenAPI file to process (required if url not provided)
+  -u, --url string         URL to Swagger/OpenAPI document (required if file not provided)
+  -o, --output string      Output directory for HTTP files (default "http-requests")
+  -b, --base-url string    Base URL for requests (overrides the one in the Swagger doc)
+  -t, --default-tag string Default tag for operations without tags (default "default")
+  -i, --indent-json        Indent JSON in request bodies (default true)
+      --auth               Include authentication header in requests
+      --auth-header string Authentication header name (default "Authorization")
+      --auth-token string  Authentication token value
+  -h, --help               help for generate
 ```
 
 ### Test Commands
@@ -139,25 +148,25 @@ Available Commands:
   sequence    Run test sequences with dependency support
 
 Flags:
-  --update string         Update mode: none, all, failed, missing (default "none")
+  --update string          Update mode: none, all, failed, missing (default "none")
   --ignore-headers string Comma-separated headers to ignore in comparison (default "Date,Set-Cookie")
-  --snapshot-dir string   Directory for snapshot storage (default ".snapshots")
-  --fail-on-missing       Fail when snapshot is missing
-  --cleanup               Remove unused snapshots after testing
-  --timeout duration      HTTP request timeout (default 30s)
-  --parallel              Run tests in parallel
+  --snapshot-dir string    Directory for snapshot storage (default ".snapshots")
+  --fail-on-missing        Fail when snapshot is missing
+  --cleanup                Remove unused snapshots after testing
+  --timeout duration       HTTP request timeout (default 30s)
+  --parallel               Run tests in parallel
   --max-concurrent int    Maximum number of concurrent tests (default 5)
-  --stop-on-failure       Stop testing after first failure
-  --tags strings          Filter tests by tags
-  --methods strings       Filter tests by HTTP methods
-  --paths strings         Filter tests by request paths
-  --names strings         Filter tests by test names
+  --stop-on-failure        Stop testing after first failure
+  --tags strings           Filter tests by tags
+  --methods strings        Filter tests by HTTP methods
+  --paths strings          Filter tests by request paths
+  --names strings          Filter tests by test names
   --report-format string  Report format: console, json, html, junit (default "console")
   --report-output string  Path to write report file
-  --detailed              Include detailed information in report
-  --watch                 Run in continuous (watch) mode
+  --detailed               Include detailed information in report
+  --watch                  Run in continuous (watch) mode
   --watch-interval int    Interval between watch checks in milliseconds (default 1000)
-  -h, --help              help for test
+  -h, --help                help for test
 ```
 
 ### Schema Validation Command
@@ -519,6 +528,67 @@ Options:
 - --watch-interval - Milliseconds between file checks
 - --watch-paths - Specific paths to watch for changes
 
+## Git Hooks Integration
+
+The swagger-to-http tool includes Git hooks that automate Swagger/OpenAPI file validation and HTTP file generation as part of your Git workflow.
+
+### Installation
+
+#### Unix/Linux/macOS
+
+```bash
+chmod +x hooks/install.sh
+./hooks/install.sh
+```
+
+#### Windows
+
+```powershell
+PowerShell -ExecutionPolicy Bypass -File hooks/install.ps1
+```
+
+### Features
+
+- **Pre-commit Hook**: Validates Swagger files and generates HTTP files when committing changes
+- **Post-merge Hook**: Updates HTTP files when Swagger files have changed after a pull/merge
+- **Selective Updates**: Only regenerates HTTP files for endpoints that have changed
+- **Configurable**: Easy to customize behavior through configuration files
+
+### Configuration
+
+After installation, a configuration file is created at `.swagger-to-http/hooks.config`. You can edit this file to customize the behavior of the hooks:
+
+```bash
+# Set to false to disable hooks temporarily
+HOOKS_ENABLED=true
+
+# Swagger/OpenAPI file patterns (space separated)
+SWAGGER_FILE_PATTERNS="**/swagger.json **/swagger.yaml **/openapi.json **/openapi.yaml"
+
+# Output directory for HTTP files
+HTTP_OUTPUT_DIR="http"
+
+# Whether to validate Swagger/OpenAPI files before generating HTTP files
+VALIDATE_SWAGGER=true
+
+# Whether to regenerate all HTTP files on changes or only affected ones
+SELECTIVE_UPDATES=true
+```
+
+### Disabling Hooks Temporarily
+
+You can temporarily disable the hooks by setting an environment variable:
+
+```bash
+# Unix/Linux/macOS
+export SWAGGER_TO_HTTP_DISABLE_HOOKS=true
+
+# Windows PowerShell
+$env:SWAGGER_TO_HTTP_DISABLE_HOOKS="true"
+```
+
+For more details, see the [Git Hooks Documentation](docs/git-hooks.md).
+
 ## Examples
 
 We provide various examples to help you get started:
@@ -542,7 +612,7 @@ This project is in active development. The following features are implemented or
 - [x] Response snapshot comparison
 - [x] Schema validation
 - [x] Test sequences and variable extraction
-- [ ] Git hooks integration
+- [x] Git hooks integration
 
 ## Documentation
 
@@ -555,6 +625,7 @@ Comprehensive documentation is available in the [docs](docs/) directory:
 - [HTTP Executor](docs/http-executor.md)
 - [Snapshot Testing](docs/snapshot-testing.md)
 - [Advanced Testing Features](docs/advanced-testing.md)
+- [Git Hooks Integration](docs/git-hooks.md)
 - [Examples](docs/examples/)
 - [API Reference](docs/api-reference.md)
 - [Contributing Guide](docs/contributing.md)

@@ -1,0 +1,15 @@
+###
+# @name ListProducts
+# @tag products
+# List all products
+
+GET https://api.example.com/v1/products?page=1&limit=20
+Accept: application/json
+
+###
+# @name GetProductById
+# @tag products
+# Get product by ID
+
+GET https://api.example.com/v1/products/{{productId}}
+Accept: application/json
