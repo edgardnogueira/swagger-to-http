@@ -12,20 +12,20 @@ import (
 
 // Service provides high-level snapshot testing functionality
 type Service struct {
-	manager      *Manager
-	options      models.SnapshotOptions
+	manager       Manager
+	options       models.SnapshotOptions
 	usedSnapshots map[string]bool
-	mu           sync.Mutex
-	stats        *models.SnapshotStats
+	mu            sync.Mutex
+	stats         *models.SnapshotStats
 }
 
 // NewService creates a new snapshot service
-func NewService(manager *Manager, options models.SnapshotOptions) *Service {
+func NewService(manager Manager, options models.SnapshotOptions) *Service {
 	return &Service{
-		manager:      manager,
-		options:      options,
+		manager:       manager,
+		options:       options,
 		usedSnapshots: make(map[string]bool),
-		stats:        &models.SnapshotStats{
+		stats:         &models.SnapshotStats{
 			StartTime: time.Now(),
 		},
 	}
@@ -58,9 +58,10 @@ func (s *Service) RunTest(ctx context.Context, response *models.HTTPResponse, pa
 		if s.options.UpdateMode == "all" || s.options.UpdateMode == "missing" {
 			// Create new snapshot
 			if createErr := s.manager.SaveSnapshot(ctx, response, snapshotPath); createErr != nil {
-				result.Error = fmt.Errorf("failed to create snapshot: %w", createErr)
+				errStr := fmt.Sprintf("failed to create snapshot: %s", createErr.Error())
+				result.Error = errStr
 				s.stats.Errors++
-				return result, result.Error
+				return result, models.StringToError(errStr)
 			}
 			
 			result.Passed = true
@@ -71,9 +72,10 @@ func (s *Service) RunTest(ctx context.Context, response *models.HTTPResponse, pa
 			return result, nil
 		}
 		
-		result.Error = fmt.Errorf("snapshot comparison failed: %w", err)
+		errStr := fmt.Sprintf("snapshot comparison failed: %s", err.Error())
+		result.Error = errStr
 		s.stats.Errors++
-		return result, result.Error
+		return result, models.StringToError(errStr)
 	}
 	
 	// Set result properties
@@ -90,9 +92,10 @@ func (s *Service) RunTest(ctx context.Context, response *models.HTTPResponse, pa
 		if s.options.UpdateMode == "all" || s.options.UpdateMode == "failed" {
 			// Update snapshot
 			if updateErr := s.manager.SaveSnapshot(ctx, response, snapshotPath); updateErr != nil {
-				result.Error = fmt.Errorf("failed to update snapshot: %w", updateErr)
+				errStr := fmt.Sprintf("failed to update snapshot: %s", updateErr.Error())
+				result.Error = errStr
 				s.stats.Errors++
-				return result, result.Error
+				return result, models.StringToError(errStr)
 			}
 			
 			result.Updated = true
