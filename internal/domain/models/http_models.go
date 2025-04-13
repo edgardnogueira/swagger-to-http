@@ -6,11 +6,22 @@ import (
 
 // HTTPRequest represents an HTTP request for executing
 type HTTPRequest struct {
-	Method  string         `json:"method"`
-	URL     string         `json:"url"`
+	// Core fields
+	Method  string            `json:"method"`
+	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers,omitempty"`
-	Body    string         `json:"body,omitempty"`
-	Auth    *AuthDetails   `json:"auth,omitempty"`
+	Body    string            `json:"body,omitempty"`
+	Auth    *AuthDetails      `json:"auth,omitempty"`
+	
+	// Fields for file format compatibility
+	Name     string      `json:"name,omitempty"`
+	Path     string      `json:"path,omitempty"`
+	Tag      string      `json:"tag,omitempty"`
+	Comments []string    `json:"comments,omitempty"`
+	
+	// Additional fields for variable handling
+	FormValues  map[string]string `json:"formValues,omitempty"`
+	QueryParams map[string]string `json:"queryParams,omitempty"`
 }
 
 // AuthDetails represents authentication details for an HTTP request
@@ -44,7 +55,31 @@ type HTTPResponse struct {
 	Protocol       string        `json:"protocol,omitempty"`
 }
 
-// HTTPFileRequest represents an HTTP request in .http file format
+// HTTPHeader represents an HTTP header
+type HTTPHeader struct {
+	Name  string
+	Value string
+}
+
+// ConvertHeadersToMap converts HTTP headers from slice to map format
+func ConvertHeadersToMap(headers []HTTPHeader) map[string]string {
+	result := make(map[string]string)
+	for _, header := range headers {
+		result[header.Name] = header.Value
+	}
+	return result
+}
+
+// ConvertMapToHeaders converts HTTP headers from map to slice format
+func ConvertMapToHeaders(headers map[string]string) []HTTPHeader {
+	var result []HTTPHeader
+	for name, value := range headers {
+		result = append(result, HTTPHeader{Name: name, Value: value})
+	}
+	return result
+}
+
+// HTTPFileRequest represents an HTTP request in .http file format (for backward compatibility)
 type HTTPFileRequest struct {
 	Name     string
 	Method   string
@@ -56,10 +91,32 @@ type HTTPFileRequest struct {
 	Path     string
 }
 
-// HTTPHeader represents an HTTP header
-type HTTPHeader struct {
-	Name  string
-	Value string
+// ToHTTPRequest converts an HTTPFileRequest to an HTTPRequest
+func (r *HTTPFileRequest) ToHTTPRequest() *HTTPRequest {
+	return &HTTPRequest{
+		Method:   r.Method,
+		URL:      r.URL,
+		Headers:  ConvertHeadersToMap(r.Headers),
+		Body:     r.Body,
+		Name:     r.Name,
+		Path:     r.Path,
+		Tag:      r.Tag,
+		Comments: r.Comments,
+	}
+}
+
+// FromHTTPRequest creates an HTTPFileRequest from an HTTPRequest
+func FromHTTPRequest(r *HTTPRequest) *HTTPFileRequest {
+	return &HTTPFileRequest{
+		Method:   r.Method,
+		URL:      r.URL,
+		Headers:  ConvertMapToHeaders(r.Headers),
+		Body:     r.Body,
+		Name:     r.Name,
+		Path:     r.Path,
+		Tag:      r.Tag,
+		Comments: r.Comments,
+	}
 }
 
 // HTTPFile represents a collection of HTTP requests to be written to a .http file
