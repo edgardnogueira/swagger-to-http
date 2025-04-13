@@ -4,6 +4,21 @@ import (
 	"time"
 )
 
+// HTTPRequest represents an HTTP request for executing
+type HTTPRequest struct {
+	Method  string         `json:"method"`
+	URL     string         `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Body    string         `json:"body,omitempty"`
+	Auth    *AuthDetails   `json:"auth,omitempty"`
+}
+
+// AuthDetails represents authentication details for an HTTP request
+type AuthDetails struct {
+	Type  string `json:"type"` // Basic, Bearer, etc.
+	Value string `json:"value,omitempty"`
+}
+
 // HTTPResponse represents an HTTP response
 type HTTPResponse struct {
 	// StatusCode is the HTTP status code
@@ -29,17 +44,40 @@ type HTTPResponse struct {
 	Protocol       string        `json:"protocol,omitempty"`
 }
 
-// HTTPRequest represents an HTTP request
-type HTTPRequest struct {
-	Method  string            `json:"method"`
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers,omitempty"`
-	Body    string            `json:"body,omitempty"`
-	Auth    *AuthDetails      `json:"auth,omitempty"`
+// HTTPFileRequest represents an HTTP request in .http file format
+type HTTPFileRequest struct {
+	Name     string
+	Method   string
+	URL      string
+	Headers  []HTTPHeader
+	Body     string
+	Comments []string
+	Tag      string
+	Path     string
 }
 
-// AuthDetails represents authentication details for an HTTP request
-type AuthDetails struct {
-	Type  string `json:"type"` // Basic, Bearer, etc.
-	Value string `json:"value,omitempty"`
+// HTTPHeader represents an HTTP header
+type HTTPHeader struct {
+	Name  string
+	Value string
+}
+
+// HTTPFile represents a collection of HTTP requests to be written to a .http file
+type HTTPFile struct {
+	Filename string
+	Requests []HTTPFileRequest
+}
+
+// HTTPDirectory represents a directory containing HTTP files
+type HTTPDirectory struct {
+	Name  string
+	Path  string
+	Files []HTTPFile
+}
+
+// HTTPCollection represents a collection of directories and files
+type HTTPCollection struct {
+	RootDir      string
+	Directories  []HTTPDirectory
+	RootFiles    []HTTPFile
 }
