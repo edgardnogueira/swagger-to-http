@@ -15,14 +15,14 @@ func (r *HTTPRequest) ToHTTPFileRequest() *HTTPFileRequest {
 	}
 
 	return &HTTPFileRequest{
-		Name:     "", // Populated by caller if needed
+		Name:     r.Name,
 		Method:   r.Method,
 		URL:      r.URL,
 		Headers:  headers,
 		Body:     r.Body,
-		Comments: []string{}, // Empty by default
-		Tag:      "",         // Empty by default
-		Path:     "",         // Empty by default
+		Comments: r.Comments,
+		Tag:      r.Tag,
+		Path:     r.Path,
 	}
 }
 
@@ -34,33 +34,64 @@ func (r *HTTPFileRequest) ToHTTPRequest() *HTTPRequest {
 		headers[header.Name] = header.Value
 	}
 
-	return &HTTPRequest{
-		Method:  r.Method,
-		URL:     r.URL,
-		Headers: headers,
-		Body:    r.Body,
-		Auth:    nil, // Auth details not available in HTTPFileRequest
+	// Construct authentication details if Authorization header is present
+	var auth *AuthDetails
+	if authHeader, ok := headers["Authorization"]; ok {
+		parts := splitAuthHeader(authHeader)
+		if len(parts) >= 1 {
+			authType := parts[0]
+			authValue := ""
+			if len(parts) > 1 {
+				authValue = parts[1]
+			}
+			auth = &AuthDetails{
+				Type:  authType,
+				Value: authValue,
+			}
+		}
 	}
+
+	return &HTTPRequest{
+		Method:   r.Method,
+		URL:      r.URL,
+		Headers:  headers,
+		Body:     r.Body,
+		Auth:     auth,
+		Name:     r.Name,
+		Path:     r.Path,
+		Tag:      r.Tag,
+		Comments: r.Comments,
+	}
+}
+
+// Helper function to split an Authorization header into type and value
+func splitAuthHeader(header string) []string {
+	for i := 0; i < len(header); i++ {
+		if header[i] == ' ' {
+			return []string{header[:i], header[i+1:]}
+		}
+	}
+	return []string{header}
 }
 
 // GetName returns the Name field or empty string for HTTPRequest
 func (r *HTTPRequest) GetName() string {
-	return "" // HTTPRequest doesn't have a Name field
+	return r.Name
 }
 
 // GetTag returns the Tag field or empty string for HTTPRequest
 func (r *HTTPRequest) GetTag() string {
-	return "" // HTTPRequest doesn't have a Tag field
+	return r.Tag
 }
 
 // GetPath returns the Path field or empty string for HTTPRequest
 func (r *HTTPRequest) GetPath() string {
-	return "" // HTTPRequest doesn't have a Path field
+	return r.Path
 }
 
-// GetComments returns an empty slice as HTTPRequest doesn't have Comments
+// GetComments returns the Comments slice from HTTPRequest
 func (r *HTTPRequest) GetComments() []string {
-	return []string{} // HTTPRequest doesn't have Comments field
+	return r.Comments
 }
 
 // IsPassed determines if the snapshot result passed
@@ -83,7 +114,7 @@ func (r *SnapshotResult) GetRequestPath() string {
 	if r.Diff != nil && r.Diff.RequestPath != "" {
 		return r.Diff.RequestPath
 	}
-	return ""
+	return r.RequestPath
 }
 
 // GetRequestMethod gets the request method from the diff if available
@@ -91,7 +122,7 @@ func (r *SnapshotResult) GetRequestMethod() string {
 	if r.Diff != nil && r.Diff.RequestMethod != "" {
 		return r.Diff.RequestMethod
 	}
-	return ""
+	return r.RequestMethod
 }
 
 // FormatHTTPHeaders converts a slice of HTTPHeader to a map of strings
@@ -123,4 +154,25 @@ func StringToBytes(s string) []byte {
 // BytesToString converts a byte slice to a string
 func BytesToString(b []byte) string {
 	return string(b)
+}
+
+// ConvertHeadersToMap converts a slice of HTTPHeader to a map
+func ConvertHeadersToMap(headers []HTTPHeader) map[string]string {
+	result := make(map[string]string)
+	for _, header := range headers {
+		result[header.Name] = header.Value
+	}
+	return result
+}
+
+// ConvertMapToHeaders converts a map to a slice of HTTPHeader
+func ConvertMapToHeaders(headers map[string]string) []HTTPHeader {
+	var result []HTTPHeader
+	for name, value := range headers {
+		result = append(result, HTTPHeader{
+			Name:  name,
+			Value: value,
+		})
+	}
+	return result
 }
