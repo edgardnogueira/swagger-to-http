@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -152,12 +153,13 @@ func AddAdvancedTestCommands(
 			options.EnableAssertions = true
 
 			// Load swagger doc if specified
+			swaggerDoc := &models.SwaggerDoc{}
 			if validateSchema && swaggerFile != "" {
-				swaggerDoc, err := loadSwaggerDoc(context.Background(), swaggerFile)
-				if err != nil {
-					return fmt.Errorf("failed to load Swagger file: %w", err)
+				var loadErr error
+				swaggerDoc, loadErr = loadSwaggerDoc(context.Background(), swaggerFile)
+				if loadErr != nil {
+					return fmt.Errorf("failed to load Swagger file: %w", loadErr)
 				}
-				options.SwaggerDoc = swaggerDoc
 			}
 
 			// Run sequences
@@ -215,8 +217,8 @@ func AddAdvancedTestCommands(
 	sequenceCmd.Flags().String("swagger-file", "", "Path to Swagger/OpenAPI file")
 
 	// Add commands to test command
-	testCmd, _ := rootCmd.Commands()
-	for _, cmd := range testCmd {
+	commands := rootCmd.Commands()
+	for _, cmd := range commands {
 		if cmd.Use == "test [file-patterns]" {
 			cmd.AddCommand(validateCmd)
 			cmd.AddCommand(sequenceCmd)
@@ -241,7 +243,7 @@ func createTestRunOptions(cmd *cobra.Command) (models.TestRunOptions, error) {
 	ignoreHeaders, _ := cmd.Flags().GetString("ignore-headers")
 	snapshotDir, _ := cmd.Flags().GetString("snapshot-dir")
 	failOnMissing, _ := cmd.Flags().GetBool("fail-on-missing")
-	timeoutStr, _ := cmd.Flags().GetString("timeout")
+	timeout, _ := cmd.Flags().GetDuration("timeout")
 	parallel, _ := cmd.Flags().GetBool("parallel")
 	maxConcurrent, _ := cmd.Flags().GetInt("max-concurrent")
 	stopOnFailure, _ := cmd.Flags().GetBool("stop-on-failure")
@@ -291,6 +293,7 @@ func createTestRunOptions(cmd *cobra.Command) (models.TestRunOptions, error) {
 		EnvironmentVars: extractEnvironmentVars(),
 		ContinuousMode:  watch,
 		WatchIntervalMs: watchInterval,
+		Timeout:         timeout,
 		ReportOptions: models.TestReportOptions{
 			Format:           reportFormat,
 			OutputPath:       reportOutput,
@@ -304,4 +307,23 @@ func createTestRunOptions(cmd *cobra.Command) (models.TestRunOptions, error) {
 	}
 
 	return options, nil
+}
+
+// Helper function to extract environment variables
+func extractEnvironmentVars() map[string]string {
+	env := make(map[string]string)
+	
+	// Add environment variables from .env file if exists
+	// TODO: Implement .env file loading
+	
+	// Add system environment variables with HTTP_ prefix
+	for _, e := range os.Environ() {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 && strings.HasPrefix(parts[0], "HTTP_") {
+			key := strings.TrimPrefix(parts[0], "HTTP_")
+			env[key] = parts[1]
+		}
+	}
+	
+	return env
 }
