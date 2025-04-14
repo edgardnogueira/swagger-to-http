@@ -2,7 +2,6 @@ package http
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,7 +23,7 @@ type Parser struct {
 // NewParser creates a new HTTP file parser
 func NewParser() *Parser {
 	return &Parser{
-		commentPattern: regexp.MustCompile(`^#\s*(.*)$`),
+		commentPattern: regexp.MustCompile(`^#\s*(.*?)$`),
 		tagPattern:     regexp.MustCompile(`^@tag\s+(.+)$`),
 		namePattern:    regexp.MustCompile(`^@name\s+(.+)$`),
 		headerPattern:  regexp.MustCompile(`^([^:]+):\s*(.+)$`),
