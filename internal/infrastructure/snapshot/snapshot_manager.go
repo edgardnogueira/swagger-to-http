@@ -12,11 +12,11 @@ import (
 
 // SnapshotManager implements the snapshot.Manager interface
 type SnapshotManager struct {
-	fileWriter fs.FileWriter
+	fileWriter fs.SnapshotFileWriter
 }
 
 // NewSnapshotManager creates a new snapshot manager with a file writer
-func NewSnapshotManager(fileWriter fs.FileWriter) snapshot.Manager {
+func NewSnapshotManager(fileWriter fs.SnapshotFileWriter) snapshot.Manager {
 	return &SnapshotManager{
 		fileWriter: fileWriter,
 	}
