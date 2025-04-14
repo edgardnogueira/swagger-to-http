@@ -4,6 +4,14 @@ import (
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 )
 
+// ComparisonResult represents the result of comparing two snapshots
+type ComparisonResult struct {
+	Equal    bool
+	Expected *models.HTTPResponse
+	Actual   *models.HTTPResponse
+	Diff     []string
+}
+
 // Manager defines the interface for snapshot management
 type Manager interface {
 	// SaveSnapshot saves a HTTP response as a snapshot file
