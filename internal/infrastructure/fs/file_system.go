@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
