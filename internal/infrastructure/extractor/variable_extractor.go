@@ -48,6 +48,12 @@ func (s *VariableExtractorService) Extract(
 	return result, nil
 }
 
+// ExtractValue extracts a single value from the HTTP response based on extraction rule
+// This is a public version of extractValue for use by other services
+func (s *VariableExtractorService) ExtractValue(response *models.HTTPResponse, extraction models.VariableExtraction) (string, error) {
+	return s.extractValue(response, extraction)
+}
+
 // ReplaceVariables replaces variable placeholders in a string
 func (s *VariableExtractorService) ReplaceVariables(input string, variables map[string]string, format string) string {
 	if input == "" || len(variables) == 0 {
