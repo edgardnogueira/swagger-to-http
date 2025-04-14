@@ -89,6 +89,7 @@ func (p *Parser) ParseFile(filePath string) (*models.HTTPFile, error) {
 					Comments: comments,
 					Tag:      tag,
 					Path:     filePath,
+					Headers:  make(map[string]string),
 				}
 				comments = []string{}
 			} else {
@@ -106,6 +107,7 @@ func (p *Parser) ParseFile(filePath string) (*models.HTTPFile, error) {
 					Comments: comments,
 					Name:     name,
 					Path:     filePath,
+					Headers:  make(map[string]string),
 				}
 				comments = []string{}
 			} else {
@@ -129,7 +131,7 @@ func (p *Parser) ParseFile(filePath string) (*models.HTTPFile, error) {
 			currentRequest = &models.HTTPRequest{
 				Method:   method,
 				URL:      url,
-				Headers:  []models.HTTPHeader{},
+				Headers:  make(map[string]string),
 				Comments: comments,
 				Path:     filePath,
 			}
@@ -151,10 +153,7 @@ func (p *Parser) ParseFile(filePath string) (*models.HTTPFile, error) {
 			if matches := p.headerPattern.FindStringSubmatch(line); len(matches) > 2 {
 				name := matches[1]
 				value := matches[2]
-				currentRequest.Headers = append(currentRequest.Headers, models.HTTPHeader{
-					Name:  name,
-					Value: value,
-				})
+				currentRequest.Headers[name] = value
 				continue
 			}
 		}
