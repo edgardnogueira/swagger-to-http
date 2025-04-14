@@ -109,8 +109,8 @@ func (w *FileWriter) writeRequest(f *os.File, request *models.HTTPRequest) error
 	}
 
 	// Write headers
-	for _, header := range request.Headers {
-		if _, err := f.WriteString(fmt.Sprintf("%s: %s\n", header.Name, header.Value)); err != nil {
+	for name, value := range request.Headers {
+		if _, err := f.WriteString(fmt.Sprintf("%s: %s\n", name, value)); err != nil {
 			return err
 		}
 	}
