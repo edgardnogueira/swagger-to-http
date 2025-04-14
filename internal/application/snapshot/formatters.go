@@ -18,16 +18,7 @@ type ResponseFormatter interface {
 	Parse(content string) (*models.HTTPResponse, error)
 
 	// Compare compares two HTTP responses and returns a comparison result
-	Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error)
-}
-
-// ComparisonResult represents the result of comparing two HTTP responses
-type ComparisonResult struct {
-	Matches   bool
-	Diff      string
-	StatusMatch bool
-	HeadersMatch bool
-	BodyMatch    bool
+	Compare(expected, actual *models.HTTPResponse) (*models.SnapshotDiff, error)
 }
 
 // formatters is a map of content types to formatters
@@ -58,8 +49,8 @@ func GetFormatter(contentType string) (ResponseFormatter, error) {
 	} else if strings.Contains(contentType, "html") {
 		formatterType = "html"
 	} else if strings.Contains(contentType, "octet-stream") || 
-		      strings.Contains(contentType, "application/pdf") || 
-		      strings.Contains(contentType, "image/") {
+	       strings.Contains(contentType, "application/pdf") || 
+	       strings.Contains(contentType, "image/") {
 		formatterType = "binary"
 	}
 
@@ -75,7 +66,7 @@ func GetFormatter(contentType string) (ResponseFormatter, error) {
 // BaseFormatter provides common functionality for all formatters
 type BaseFormatter struct{}
 
-// Format formats the response headers and metadata
+// formatHeaders formats the response headers and metadata
 func (f *BaseFormatter) formatHeaders(response *models.HTTPResponse) string {
 	var sb strings.Builder
 
@@ -278,24 +269,24 @@ func (f *JSONFormatter) Parse(content string) (*models.HTTPResponse, error) {
 }
 
 // Compare compares two HTTP responses and returns a comparison result
-func (f *JSONFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
-	result := &ComparisonResult{
-		Matches: true,
+func (f *JSONFormatter) Compare(expected, actual *models.HTTPResponse) (*models.SnapshotDiff, error) {
+	result := &models.SnapshotDiff{
+		Equal: true,
 	}
 
 	// Compare status codes
-	result.StatusMatch = expected.StatusCode == actual.StatusCode
-	if !result.StatusMatch {
-		result.Matches = false
-		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+	if expected.StatusCode != actual.StatusCode {
+		result.Equal = false
+		result.StatusDiff = true
+		result.DiffString += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
 			expected.StatusCode, actual.StatusCode)
 	}
 
 	// Compare headers
-	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
-	if !result.HeadersMatch {
-		result.Matches = false
-		result.Diff += "Headers mismatch\n"
+	headersMatch := f.compareHeaders(expected.Headers, actual.Headers)
+	if !headersMatch {
+		result.Equal = false
+		result.DiffString += "Headers mismatch\n"
 	}
 
 	// Compare bodies
@@ -312,27 +303,24 @@ func (f *JSONFormatter) Compare(expected, actual *models.HTTPResponse) (*Compari
 			actualBytes, _ := json.MarshalIndent(actualJSON, "", "  ")
 
 			if string(expectedBytes) == string(actualBytes) {
-				result.BodyMatch = true
+				// Bodies match
 			} else {
-				result.BodyMatch = false
-				result.Matches = false
-				result.Diff += "JSON body mismatch:\n"
-				result.Diff += f.createDiff(string(expectedBytes), string(actualBytes))
+				result.Equal = false
+				result.DiffString += "JSON body mismatch:\n"
+				result.DiffString += f.createDiff(string(expectedBytes), string(actualBytes))
 			}
 		} else {
 			// Fall back to string comparison
 			if expected.Body == actual.Body {
-				result.BodyMatch = true
+				// Bodies match
 			} else {
-				result.BodyMatch = false
-				result.Matches = false
-				result.Diff += "Body mismatch:\n"
-				result.Diff += f.createDiff(expected.Body, actual.Body)
+				result.Equal = false
+				result.DiffString += "Body mismatch:\n"
+				result.DiffString += f.createDiff(expected.Body, actual.Body)
 			}
 		}
 	} else {
 		// Both bodies are empty
-		result.BodyMatch = true
 	}
 
 	return result, nil
@@ -370,34 +358,32 @@ func (f *XMLFormatter) Parse(content string) (*models.HTTPResponse, error) {
 }
 
 // Compare compares two HTTP responses and returns a comparison result
-func (f *XMLFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
-	result := &ComparisonResult{
-		Matches: true,
+func (f *XMLFormatter) Compare(expected, actual *models.HTTPResponse) (*models.SnapshotDiff, error) {
+	result := &models.SnapshotDiff{
+		Equal: true,
 	}
 
 	// Compare status codes
-	result.StatusMatch = expected.StatusCode == actual.StatusCode
-	if !result.StatusMatch {
-		result.Matches = false
-		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+	if expected.StatusCode != actual.StatusCode {
+		result.Equal = false
+		result.DiffString += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
 			expected.StatusCode, actual.StatusCode)
 	}
 
 	// Compare headers
-	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
-	if !result.HeadersMatch {
-		result.Matches = false
-		result.Diff += "Headers mismatch\n"
+	headersMatch := f.compareHeaders(expected.Headers, actual.Headers)
+	if !headersMatch {
+		result.Equal = false
+		result.DiffString += "Headers mismatch\n"
 	}
 
 	// Compare bodies
 	if expected.Body == actual.Body {
-		result.BodyMatch = true
+		// Bodies match
 	} else {
-		result.BodyMatch = false
-		result.Matches = false
-		result.Diff += "XML body mismatch:\n"
-		result.Diff += f.createDiff(expected.Body, actual.Body)
+		result.Equal = false
+		result.DiffString += "XML body mismatch:\n"
+		result.DiffString += f.createDiff(expected.Body, actual.Body)
 	}
 
 	return result, nil
@@ -435,34 +421,32 @@ func (f *TextFormatter) Parse(content string) (*models.HTTPResponse, error) {
 }
 
 // Compare compares two HTTP responses and returns a comparison result
-func (f *TextFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
-	result := &ComparisonResult{
-		Matches: true,
+func (f *TextFormatter) Compare(expected, actual *models.HTTPResponse) (*models.SnapshotDiff, error) {
+	result := &models.SnapshotDiff{
+		Equal: true,
 	}
 
 	// Compare status codes
-	result.StatusMatch = expected.StatusCode == actual.StatusCode
-	if !result.StatusMatch {
-		result.Matches = false
-		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+	if expected.StatusCode != actual.StatusCode {
+		result.Equal = false
+		result.DiffString += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
 			expected.StatusCode, actual.StatusCode)
 	}
 
 	// Compare headers
-	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
-	if !result.HeadersMatch {
-		result.Matches = false
-		result.Diff += "Headers mismatch\n"
+	headersMatch := f.compareHeaders(expected.Headers, actual.Headers)
+	if !headersMatch {
+		result.Equal = false
+		result.DiffString += "Headers mismatch\n"
 	}
 
 	// Compare bodies
 	if expected.Body == actual.Body {
-		result.BodyMatch = true
+		// Bodies match
 	} else {
-		result.BodyMatch = false
-		result.Matches = false
-		result.Diff += "Text body mismatch:\n"
-		result.Diff += f.createDiff(expected.Body, actual.Body)
+		result.Equal = false
+		result.DiffString += "Text body mismatch:\n"
+		result.DiffString += f.createDiff(expected.Body, actual.Body)
 	}
 
 	return result, nil
@@ -500,34 +484,32 @@ func (f *HTMLFormatter) Parse(content string) (*models.HTTPResponse, error) {
 }
 
 // Compare compares two HTTP responses and returns a comparison result
-func (f *HTMLFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
-	result := &ComparisonResult{
-		Matches: true,
+func (f *HTMLFormatter) Compare(expected, actual *models.HTTPResponse) (*models.SnapshotDiff, error) {
+	result := &models.SnapshotDiff{
+		Equal: true,
 	}
 
 	// Compare status codes
-	result.StatusMatch = expected.StatusCode == actual.StatusCode
-	if !result.StatusMatch {
-		result.Matches = false
-		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+	if expected.StatusCode != actual.StatusCode {
+		result.Equal = false
+		result.DiffString += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
 			expected.StatusCode, actual.StatusCode)
 	}
 
 	// Compare headers
-	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
-	if !result.HeadersMatch {
-		result.Matches = false
-		result.Diff += "Headers mismatch\n"
+	headersMatch := f.compareHeaders(expected.Headers, actual.Headers)
+	if !headersMatch {
+		result.Equal = false
+		result.DiffString += "Headers mismatch\n"
 	}
 
 	// Compare bodies
 	if expected.Body == actual.Body {
-		result.BodyMatch = true
+		// Bodies match
 	} else {
-		result.BodyMatch = false
-		result.Matches = false
-		result.Diff += "HTML body mismatch:\n"
-		result.Diff += f.createDiff(expected.Body, actual.Body)
+		result.Equal = false
+		result.DiffString += "HTML body mismatch:\n"
+		result.DiffString += f.createDiff(expected.Body, actual.Body)
 	}
 
 	return result, nil
@@ -566,24 +548,23 @@ func (f *BinaryFormatter) Parse(content string) (*models.HTTPResponse, error) {
 }
 
 // Compare compares two HTTP responses and returns a comparison result
-func (f *BinaryFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
-	result := &ComparisonResult{
-		Matches: true,
+func (f *BinaryFormatter) Compare(expected, actual *models.HTTPResponse) (*models.SnapshotDiff, error) {
+	result := &models.SnapshotDiff{
+		Equal: true,
 	}
 
 	// Compare status codes
-	result.StatusMatch = expected.StatusCode == actual.StatusCode
-	if !result.StatusMatch {
-		result.Matches = false
-		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+	if expected.StatusCode != actual.StatusCode {
+		result.Equal = false
+		result.DiffString += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
 			expected.StatusCode, actual.StatusCode)
 	}
 
 	// Compare headers
-	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
-	if !result.HeadersMatch {
-		result.Matches = false
-		result.Diff += "Headers mismatch\n"
+	headersMatch := f.compareHeaders(expected.Headers, actual.Headers)
+	if !headersMatch {
+		result.Equal = false
+		result.DiffString += "Headers mismatch\n"
 	}
 
 	// For binary data, we only compare lengths
@@ -591,11 +572,10 @@ func (f *BinaryFormatter) Compare(expected, actual *models.HTTPResponse) (*Compa
 	actualLen := len(actual.Body)
 
 	if expectedLen == actualLen {
-		result.BodyMatch = true
+		// Sizes match
 	} else {
-		result.BodyMatch = false
-		result.Matches = false
-		result.Diff += fmt.Sprintf("Binary data size mismatch: expected %d bytes, got %d bytes\n", 
+		result.Equal = false
+		result.DiffString += fmt.Sprintf("Binary data size mismatch: expected %d bytes, got %d bytes\n", 
 			expectedLen, actualLen)
 	}
 
@@ -634,34 +614,32 @@ func (f *DefaultFormatter) Parse(content string) (*models.HTTPResponse, error) {
 }
 
 // Compare compares two HTTP responses and returns a comparison result
-func (f *DefaultFormatter) Compare(expected, actual *models.HTTPResponse) (*ComparisonResult, error) {
-	result := &ComparisonResult{
-		Matches: true,
+func (f *DefaultFormatter) Compare(expected, actual *models.HTTPResponse) (*models.SnapshotDiff, error) {
+	result := &models.SnapshotDiff{
+		Equal: true,
 	}
 
 	// Compare status codes
-	result.StatusMatch = expected.StatusCode == actual.StatusCode
-	if !result.StatusMatch {
-		result.Matches = false
-		result.Diff += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
+	if expected.StatusCode != actual.StatusCode {
+		result.Equal = false
+		result.DiffString += fmt.Sprintf("Status code mismatch: expected %d, got %d\n", 
 			expected.StatusCode, actual.StatusCode)
 	}
 
 	// Compare headers
-	result.HeadersMatch = f.compareHeaders(expected.Headers, actual.Headers)
-	if !result.HeadersMatch {
-		result.Matches = false
-		result.Diff += "Headers mismatch\n"
+	headersMatch := f.compareHeaders(expected.Headers, actual.Headers)
+	if !headersMatch {
+		result.Equal = false
+		result.DiffString += "Headers mismatch\n"
 	}
 
 	// Compare bodies
 	if expected.Body == actual.Body {
-		result.BodyMatch = true
+		// Bodies match
 	} else {
-		result.BodyMatch = false
-		result.Matches = false
-		result.Diff += "Body mismatch:\n"
-		result.Diff += f.createDiff(expected.Body, actual.Body)
+		result.Equal = false
+		result.DiffString += "Body mismatch:\n"
+		result.DiffString += f.createDiff(expected.Body, actual.Body)
 	}
 
 	return result, nil
