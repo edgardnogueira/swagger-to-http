@@ -7,14 +7,8 @@ import (
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 )
 
-// FileWriter defines the interface for writing files
-type FileWriter interface {
-	// WriteCollection writes a collection of HTTP files to disk
-	WriteCollection(ctx context.Context, collection *models.HTTPCollection) error
-	
-	// WriteFile writes a single HTTP file to disk
-	WriteFile(ctx context.Context, file *models.HTTPFile, dirPath string) error
-	
+// SnapshotFileWriter defines the interface for file operations used by snapshot functionality
+type SnapshotFileWriter interface {
 	// MkdirAll creates a directory with all necessary parent directories
 	MkdirAll(path string, perm os.FileMode) error
 	
