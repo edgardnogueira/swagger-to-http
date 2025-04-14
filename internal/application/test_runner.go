@@ -153,7 +153,7 @@ func (s *TestRunnerService) RunTest(ctx context.Context, request *models.HTTPReq
 	}
 
 	// Compare with existing snapshot
-	diff, err := s.snapshotManager.CompareWithSnapshot(ctx, response, snapshotPath)
+	diff, err := s.snapshotManager.CompareSnapshots(ctx, response, snapshotPath)
 	if err != nil {
 		result.Status = models.TestStatusError
 		result.Error = fmt.Sprintf("snapshot comparison error: %v", err)
@@ -201,7 +201,7 @@ func (s *TestRunnerService) RunTestFile(ctx context.Context, file *models.HTTPFi
 
 	for _, request := range file.Requests {
 		// Check if the test meets the filter criteria
-		if !s.matchesFilter(request, options.Filter) {
+		if !s.matchesFilter(&request, options.Filter) {
 			continue
 		}
 
@@ -324,8 +324,8 @@ func (s *TestRunnerService) runTestsParallel(ctx context.Context, files []*model
 	for _, file := range files {
 		for i := range file.Requests {
 			workQueue <- workItem{
-				file:        file,
-				requestIdx:  i,
+				file:       file,
+				requestIdx: i,
 			}
 		}
 	}
