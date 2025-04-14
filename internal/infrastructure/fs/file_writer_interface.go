@@ -1,10 +1,7 @@
 package fs
 
 import (
-	"context"
 	"os"
-
-	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 )
 
 // SnapshotFileWriter defines the interface for file operations used by snapshot functionality
