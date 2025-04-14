@@ -54,20 +54,20 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 	actualValue, err := s.getValueFromResponse(response, assertion.Source, assertion.Path)
 	if err != nil {
 		return &models.TestAssertionResult{
-			Type:      assertion.Type,
-			Source:    assertion.Source,
-			Path:      assertion.Path,
-			Succeeded: false,
-			Message:   fmt.Sprintf("Error extracting value: %s", err),
+			Type:        assertion.Type,
+			Source:      assertion.Source,
+			Path:        assertion.Path,
+			Passed:      false,
+			Description: fmt.Sprintf("Error extracting value: %s", err),
 		}, nil
 	}
 	
 	// Initialize the result
 	result := &models.TestAssertionResult{
-		Type:      assertion.Type,
-		Source:    assertion.Source,
-		Path:      assertion.Path,
-		Actual:    actualValue,
+		Type:    assertion.Type,
+		Source:  assertion.Source,
+		Path:    assertion.Path,
+		Actual:  actualValue,
 	}
 	
 	// Evaluate the assertion based on its type
@@ -79,12 +79,12 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 		if assertion.IgnoreCase {
 			equals = strings.EqualFold(strings.ToLower(actualValue), strings.ToLower(expected))
 		}
-		result.Succeeded = (equals != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = (equals != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = fmt.Sprintf("Expected value to not equal '%s'", expected)
+				result.Description = fmt.Sprintf("Expected value to not equal '%s'", expected)
 			} else {
-				result.Message = fmt.Sprintf("Expected '%s', got '%s'", expected, actualValue)
+				result.Description = fmt.Sprintf("Expected '%s', got '%s'", expected, actualValue)
 			}
 		}
 		
@@ -95,12 +95,12 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 		if assertion.IgnoreCase {
 			contains = strings.Contains(strings.ToLower(actualValue), strings.ToLower(expected))
 		}
-		result.Succeeded = (contains != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = (contains != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = fmt.Sprintf("Expected value to not contain '%s'", expected)
+				result.Description = fmt.Sprintf("Expected value to not contain '%s'", expected)
 			} else {
-				result.Message = fmt.Sprintf("Expected to contain '%s', got '%s'", expected, actualValue)
+				result.Description = fmt.Sprintf("Expected to contain '%s', got '%s'", expected, actualValue)
 			}
 		}
 		
@@ -111,31 +111,31 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 		if err != nil {
 			return nil, fmt.Errorf("invalid regex pattern: %w", err)
 		}
-		result.Succeeded = (matched != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = (matched != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = fmt.Sprintf("Expected value to not match pattern '%s'", pattern)
+				result.Description = fmt.Sprintf("Expected value to not match pattern '%s'", pattern)
 			} else {
-				result.Message = fmt.Sprintf("Expected to match pattern '%s', got '%s'", pattern, actualValue)
+				result.Description = fmt.Sprintf("Expected to match pattern '%s', got '%s'", pattern, actualValue)
 			}
 		}
 		
 	case "exists":
 		// For "exists", we just check if the value was successfully extracted
-		result.Succeeded = (actualValue != "" != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = (actualValue != "" != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = "Expected value to not exist"
+				result.Description = "Expected value to not exist"
 			} else {
-				result.Message = "Expected value to exist"
+				result.Description = "Expected value to exist"
 			}
 		}
 		
 	case "notexists":
 		// "notexists" is the opposite of "exists"
-		result.Succeeded = (actualValue == "")
-		if !result.Succeeded {
-			result.Message = fmt.Sprintf("Expected value to not exist, got '%s'", actualValue)
+		result.Passed = (actualValue == "")
+		if !result.Passed {
+			result.Description = fmt.Sprintf("Expected value to not exist, got '%s'", actualValue)
 		}
 		
 	case "in":
@@ -153,12 +153,12 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 			}
 		}
 		result.Expected = strings.TrimSuffix(result.Expected, ", ")
-		result.Succeeded = (found != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = (found != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = fmt.Sprintf("Expected value to not be one of [%s]", result.Expected)
+				result.Description = fmt.Sprintf("Expected value to not be one of [%s]", result.Expected)
 			} else {
-				result.Message = fmt.Sprintf("Expected value to be one of [%s], got '%s'", result.Expected, actualValue)
+				result.Description = fmt.Sprintf("Expected value to be one of [%s], got '%s'", result.Expected, actualValue)
 			}
 		}
 		
@@ -172,12 +172,12 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 			return nil, fmt.Errorf("value is not a number: %w", err)
 		}
 		result.Expected = assertion.Value
-		result.Succeeded = ((actual < expected) != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = ((actual < expected) != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = fmt.Sprintf("Expected value to not be less than %v", expected)
+				result.Description = fmt.Sprintf("Expected value to not be less than %v", expected)
 			} else {
-				result.Message = fmt.Sprintf("Expected value to be less than %v, got %v", expected, actual)
+				result.Description = fmt.Sprintf("Expected value to be less than %v, got %v", expected, actual)
 			}
 		}
 		
@@ -191,23 +191,23 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 			return nil, fmt.Errorf("value is not a number: %w", err)
 		}
 		result.Expected = assertion.Value
-		result.Succeeded = ((actual > expected) != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = ((actual > expected) != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = fmt.Sprintf("Expected value to not be greater than %v", expected)
+				result.Description = fmt.Sprintf("Expected value to not be greater than %v", expected)
 			} else {
-				result.Message = fmt.Sprintf("Expected value to be greater than %v, got %v", expected, actual)
+				result.Description = fmt.Sprintf("Expected value to be greater than %v, got %v", expected, actual)
 			}
 		}
 		
 	case "null", "nil":
 		isNull := (actualValue == "null" || actualValue == "")
-		result.Succeeded = (isNull != assertion.Not)
-		if !result.Succeeded {
+		result.Passed = (isNull != assertion.Not)
+		if !result.Passed {
 			if assertion.Not {
-				result.Message = "Expected value to not be null"
+				result.Description = "Expected value to not be null"
 			} else {
-				result.Message = fmt.Sprintf("Expected null, got '%s'", actualValue)
+				result.Description = fmt.Sprintf("Expected null, got '%s'", actualValue)
 			}
 		}
 		
