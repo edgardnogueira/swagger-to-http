@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/edgardnogueira/swagger-to-http/internal/application/snapshot"
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 )
 
@@ -59,7 +58,7 @@ type SnapshotManager interface {
 	LoadSnapshot(ctx context.Context, path string) (*models.HTTPResponse, error)
 	
 	// CompareSnapshots compares a response with a snapshot
-	CompareSnapshots(ctx context.Context, response *models.HTTPResponse, snapshotPath string) (*snapshot.ComparisonResult, error)
+	CompareSnapshots(ctx context.Context, response *models.HTTPResponse, snapshotPath string) (*models.SnapshotDiff, error)
 }
 
 // ConfigProvider defines the interface for retrieving configuration
