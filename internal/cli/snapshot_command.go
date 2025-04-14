@@ -161,9 +161,8 @@ func AddSnapshotCommands(rootCmd *cobra.Command, configProvider application.Conf
 
 // runSnapshotTests runs snapshot tests for the given file pattern
 func runSnapshotTests(cmd *cobra.Command, pattern string, options models.SnapshotOptions, failOnMissing, cleanup bool, timeout time.Duration) error {
-	// Create snapshot manager and service
-	manager := snapshot.NewManager(options.BasePath)
-	service := snapshot.NewService(manager, options)
+	// Create snapshot service directly
+	service := snapshot.NewService(options)
 	
 	// Create HTTP parser
 	parser := http.NewParser()
@@ -228,7 +227,7 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 					RequestPath:   request.Path,
 					RequestMethod: request.Method,
 					Passed:        false,
-					Error:         err,
+					ErrorMessage:  err.Error(), // Assuming ErrorMessage is a string field in SnapshotResult
 				})
 				continue
 			}
@@ -243,44 +242,49 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 				fmt.Printf("    %s Snapshot comparison failed\n", color.RedString("✗"))
 				
 				// Print diff details
-				if result.Diff != nil && result.Diff.StatusDiff != nil && !result.Diff.StatusDiff.Equal {
-					fmt.Printf("      Status code: expected %d, got %d\n", 
-						result.Diff.StatusDiff.Expected, 
-						result.Diff.StatusDiff.Actual)
-				}
-				
-				if result.Diff != nil && result.Diff.HeaderDiff != nil && !result.Diff.HeaderDiff.Equal {
-					fmt.Println("      Headers differ:")
-					if len(result.Diff.HeaderDiff.MissingHeaders) > 0 {
-						fmt.Println("        Missing headers:")
-						for h := range result.Diff.HeaderDiff.MissingHeaders {
-							fmt.Printf("          - %s\n", h)
-						}
+				if result.Diff != nil {
+					// For status code differences
+					if result.Diff.StatusDiff {
+						fmt.Printf("      Status code: expected %d, got %d\n", 
+							result.Diff.ExpectedStatus, 
+							result.Diff.ActualStatus)
 					}
-					if len(result.Diff.HeaderDiff.ExtraHeaders) > 0 {
-						fmt.Println("        Extra headers:")
-						for h := range result.Diff.HeaderDiff.ExtraHeaders {
-							fmt.Printf("          + %s\n", h)
-						}
-					}
-				}
-				
-				if result.Diff != nil && result.Diff.BodyDiff != nil && !result.Diff.BodyDiff.Equal {
-					fmt.Printf("      Body content differs (expected %d bytes, got %d bytes)\n", 
-						result.Diff.BodyDiff.ExpectedSize, 
-						result.Diff.BodyDiff.ActualSize)
 					
-					// Print diff preview if available
-					if result.Diff.BodyDiff.DiffContent != "" {
-						fmt.Println("      Diff preview:")
-						lines := strings.Split(result.Diff.BodyDiff.DiffContent, "\n")
-						maxLines := 10
-						if len(lines) > maxLines {
-							lines = lines[:maxLines]
-							fmt.Printf("        %s\n        ...(truncated)...\n", 
-								strings.Join(lines, "\n        "))
-						} else {
-							fmt.Printf("        %s\n", strings.Join(lines, "\n        "))
+					// For header differences
+					if result.Diff.HeaderDiff {
+						fmt.Println("      Headers differ:")
+						if len(result.Diff.MissingHeaders) > 0 {
+							fmt.Println("        Missing headers:")
+							for _, h := range result.Diff.MissingHeaders {
+								fmt.Printf("          - %s\n", h)
+							}
+						}
+						if len(result.Diff.ExtraHeaders) > 0 {
+							fmt.Println("        Extra headers:")
+							for _, h := range result.Diff.ExtraHeaders {
+								fmt.Printf("          + %s\n", h)
+							}
+						}
+					}
+					
+					// For body differences
+					if result.Diff.BodyDiff {
+						fmt.Printf("      Body content differs (expected %d bytes, got %d bytes)\n", 
+							result.Diff.ExpectedBodySize, 
+							result.Diff.ActualBodySize)
+						
+						// Print diff preview if available
+						if result.Diff.DiffContent != "" {
+							fmt.Println("      Diff preview:")
+							lines := strings.Split(result.Diff.DiffContent, "\n")
+							maxLines := 10
+							if len(lines) > maxLines {
+								lines = lines[:maxLines]
+								fmt.Printf("        %s\n        ...(truncated)...\n", 
+									strings.Join(lines, "\n        "))
+							} else {
+								fmt.Printf("        %s\n", strings.Join(lines, "\n        "))
+							}
 						}
 					}
 				}
@@ -314,9 +318,13 @@ func runSnapshotTests(cmd *cobra.Command, pattern string, options models.Snapsho
 
 // listSnapshots lists the snapshots in a directory
 func listSnapshots(cmd *cobra.Command, basePath, directory string) error {
-	manager := snapshot.NewManager(basePath)
+	// Create service directly
+	options := models.SnapshotOptions{
+		BasePath: basePath,
+	}
+	service := snapshot.NewService(options)
 	
-	snapshots, err := manager.ListSnapshots(context.Background(), directory)
+	snapshots, err := service.ListSnapshots(context.Background(), directory)
 	if err != nil {
 		return fmt.Errorf("failed to list snapshots: %w", err)
 	}
@@ -336,13 +344,17 @@ func listSnapshots(cmd *cobra.Command, basePath, directory string) error {
 
 // cleanupSnapshots removes orphaned snapshots
 func cleanupSnapshots(cmd *cobra.Command, basePath, directory string) error {
-	manager := snapshot.NewManager(basePath)
+	// Create service directly
+	options := models.SnapshotOptions{
+		BasePath: basePath,
+	}
+	service := snapshot.NewService(options)
 	
 	// Create HTTP parser to find valid HTTP files
 	parser := http.NewParser()
 	
 	// List all snapshots
-	snapshots, err := manager.ListSnapshots(context.Background(), directory)
+	snapshots, err := service.ListSnapshots(context.Background(), directory)
 	if err != nil {
 		return fmt.Errorf("failed to list snapshots: %w", err)
 	}
@@ -433,9 +445,9 @@ func cleanupSnapshots(cmd *cobra.Command, basePath, directory string) error {
 func printTestSummary(stats *models.SnapshotStats) {
 	duration := stats.EndTime.Sub(stats.StartTime)
 	
-	fmt.Println("\n=======================================")
+	fmt.Println("\n=====================================")
 	fmt.Println("Snapshot Test Summary")
-	fmt.Println("=======================================")
+	fmt.Println("=====================================")
 	fmt.Printf("Total tests:    %d\n", stats.Total)
 	fmt.Printf("Passed:         %s\n", color.GreenString("%d", stats.Passed))
 	
@@ -458,7 +470,7 @@ func printTestSummary(stats *models.SnapshotStats) {
 	}
 	
 	fmt.Printf("Duration:       %.2f seconds\n", duration.Seconds())
-	fmt.Println("=======================================")
+	fmt.Println("=====================================")
 }
 
 // loadEnvironmentVariables loads environment variables for HTTP requests
