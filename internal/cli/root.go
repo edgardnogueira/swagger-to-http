@@ -26,7 +26,7 @@ func Execute(
 	fileWriter application.FileWriter,
 ) error {
 	// Add snapshot commands
-	InitSnapshotCommands(rootCmd, configProvider, httpExecutor)
+	AddSnapshotCommands(rootCmd, configProvider)
 	
 	// Add test commands
 	AddTestCommands(rootCmd, configProvider, testRunner, testReporter)
