@@ -17,10 +17,10 @@ import (
 
 // SequenceRunnerService implements the SequenceRunner interface
 type SequenceRunnerService struct {
-	httpExecutor      application.HTTPExecutor
-	variableExtractor *extractor.VariableExtractorService
+	httpExecutor       application.HTTPExecutor
+	variableExtractor  *extractor.VariableExtractorService
 	assertionEvaluator *asserter.AssertionEvaluatorService
-	schemaValidator   application.SchemaValidator
+	schemaValidator    application.SchemaValidator
 }
 
 // NewSequenceRunnerService creates a new SequenceRunnerService
@@ -29,10 +29,10 @@ func NewSequenceRunnerService(
 	schemaValidator application.SchemaValidator,
 ) *SequenceRunnerService {
 	return &SequenceRunnerService{
-		httpExecutor:      httpExecutor,
-		variableExtractor: extractor.NewVariableExtractorService(),
+		httpExecutor:       httpExecutor,
+		variableExtractor:  extractor.NewVariableExtractorService(),
 		assertionEvaluator: asserter.NewAssertionEvaluatorService(),
-		schemaValidator:   schemaValidator,
+		schemaValidator:    schemaValidator,
 	}
 }
 
@@ -78,7 +78,7 @@ func (s *SequenceRunnerService) RunSequence(
 				result.StepResults = append(result.StepResults, models.TestSequenceStepResult{
 					Name:   step.Name,
 					Status: models.TestStatusSkipped,
-					Message: fmt.Sprintf("Skipped due to condition: %s", step.SkipCondition),
+					Error:  fmt.Sprintf("Skipped due to condition: %s", step.SkipCondition),
 				})
 				continue
 			}
@@ -158,11 +158,11 @@ func (s *SequenceRunnerService) RunSequence(
 		
 		// Validate schema if enabled
 		if (options.ValidateSchema || step.SchemaValidate) && s.schemaValidator != nil {
-			// Get swagger doc from context or load it
+			// Check if a SwaggerDoc is available from validation options
 			var swaggerDoc *models.SwaggerDoc
-			if options.SwaggerDoc != nil {
-				swaggerDoc = options.SwaggerDoc
-			}
+			
+			// Initialize validation options if needed
+			validationOptions := options.ValidationOptions
 			
 			if swaggerDoc != nil {
 				// Validate response against swagger schema
@@ -172,7 +172,7 @@ func (s *SequenceRunnerService) RunSequence(
 					swaggerDoc,
 					requestWithVars.Path,
 					requestWithVars.Method,
-					options.ValidationOptions,
+					validationOptions,
 				)
 				
 				if err != nil {
@@ -215,12 +215,12 @@ func (s *SequenceRunnerService) RunSequence(
 			
 			// Check if any assertions failed
 			for _, assertionResult := range assertionResults {
-				if !assertionResult.Succeeded {
+				if !assertionResult.Passed {
 					stepResult.Status = models.TestStatusFailed
 					stepResult.Error = fmt.Sprintf(
 						"Assertion failed: %s - %s",
 						assertionResult.Type,
-						assertionResult.Message,
+						assertionResult.Description,
 					)
 					result.Success = false
 					if options.FailFast || step.StopOnFail {
