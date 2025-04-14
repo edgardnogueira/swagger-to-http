@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -13,7 +12,7 @@ import (
 )
 
 // SchemaValidatorService implements the SchemaValidator interface
-type SchemaValidatorService struct {}
+type SchemaValidatorService struct{}
 
 // NewSchemaValidatorService creates a new SchemaValidatorService
 func NewSchemaValidatorService() *SchemaValidatorService {
@@ -41,7 +40,7 @@ func (s *SchemaValidatorService) ValidateResponse(
 
 	// Parse the response body
 	var responseBody interface{}
-	if err := json.Unmarshal(response.Body, &responseBody); err != nil {
+	if err := json.Unmarshal([]byte(response.Body), &responseBody); err != nil {
 		return &models.SchemaValidationResult{
 			Valid:          false,
 			Errors:         []models.ValidationError{{
@@ -89,7 +88,7 @@ func (s *SchemaValidatorService) ValidateResponseWithSwagger(
 
 	// Parse the response body
 	var responseBody interface{}
-	if err := json.Unmarshal(response.Body, &responseBody); err != nil {
+	if err := json.Unmarshal([]byte(response.Body), &responseBody); err != nil {
 		return &models.SchemaValidationResult{
 			Valid:          false,
 			Errors:         []models.ValidationError{{
@@ -164,7 +163,7 @@ func (s *SchemaValidatorService) GetSchemaForOperation(
 	default:
 		return "", fmt.Errorf("unsupported HTTP method: %s", method)
 	}
-
+	
 	if operation == nil {
 		return "", fmt.Errorf("operation not found for method: %s", method)
 	}
