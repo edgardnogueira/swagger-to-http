@@ -12,20 +12,20 @@ import (
 
 // Service provides high-level snapshot testing functionality
 type Service struct {
-	manager      *Manager
+	manager      Manager
 	options      models.SnapshotOptions
 	usedSnapshots map[string]bool
 	mu           sync.Mutex
-	stats        *models.SnapshotStats
+	stats         *models.SnapshotStats
 }
 
 // NewService creates a new snapshot service
-func NewService(manager *Manager, options models.SnapshotOptions) *Service {
+func NewService(manager Manager, options models.SnapshotOptions) *Service {
 	return &Service{
 		manager:      manager,
 		options:      options,
 		usedSnapshots: make(map[string]bool),
-		stats:        &models.SnapshotStats{
+		stats:         &models.SnapshotStats{
 			StartTime: time.Now(),
 		},
 	}
@@ -53,14 +53,15 @@ func (s *Service) RunTest(ctx context.Context, response *models.HTTPResponse, pa
 	}
 	
 	// Compare with snapshot
-	diff, err := s.manager.CompareWithSnapshot(ctx, response, snapshotPath)
+	diff, err := s.manager.CompareSnapshots(response, snapshotPath, "")
 	if err != nil {
 		if s.options.UpdateMode == "all" || s.options.UpdateMode == "missing" {
 			// Create new snapshot
-			if createErr := s.manager.SaveSnapshot(ctx, response, snapshotPath); createErr != nil {
-				result.Error = fmt.Errorf("failed to create snapshot: %w", createErr)
+			if createErr := s.manager.SaveSnapshot(response, snapshotPath, ""); createErr != nil {
+				errMsg := fmt.Sprintf("failed to create snapshot: %v", createErr)
+				result.Error = errMsg
 				s.stats.Errors++
-				return result, result.Error
+				return result, fmt.Errorf(errMsg)
 			}
 			
 			result.Passed = true
@@ -71,9 +72,10 @@ func (s *Service) RunTest(ctx context.Context, response *models.HTTPResponse, pa
 			return result, nil
 		}
 		
-		result.Error = fmt.Errorf("snapshot comparison failed: %w", err)
+		errMsg := fmt.Sprintf("snapshot comparison failed: %v", err)
+		result.Error = errMsg
 		s.stats.Errors++
-		return result, result.Error
+		return result, fmt.Errorf(errMsg)
 	}
 	
 	// Set result properties
@@ -89,10 +91,11 @@ func (s *Service) RunTest(ctx context.Context, response *models.HTTPResponse, pa
 		
 		if s.options.UpdateMode == "all" || s.options.UpdateMode == "failed" {
 			// Update snapshot
-			if updateErr := s.manager.SaveSnapshot(ctx, response, snapshotPath); updateErr != nil {
-				result.Error = fmt.Errorf("failed to update snapshot: %w", updateErr)
+			if updateErr := s.manager.SaveSnapshot(response, snapshotPath, ""); updateErr != nil {
+				errMsg := fmt.Sprintf("failed to update snapshot: %v", updateErr)
+				result.Error = errMsg
 				s.stats.Errors++
-				return result, result.Error
+				return result, fmt.Errorf(errMsg)
 			}
 			
 			result.Updated = true
@@ -108,7 +111,7 @@ func (s *Service) CleanupUnusedSnapshots(ctx context.Context, directory string) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	
-	return s.manager.CleanupSnapshots(ctx, directory, s.usedSnapshots)
+	return s.manager.CleanupSnapshots(directory, s.usedSnapshots)
 }
 
 // GetStats returns the current test statistics
