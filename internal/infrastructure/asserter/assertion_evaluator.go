@@ -141,8 +141,9 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 	case "in":
 		// Check if the actual value is in the list of expected values
 		var found bool
+		expectedValues := ""
 		for _, val := range assertion.Values {
-			result.Expected += val + ", "
+			expectedValues += val + ", "
 			equals := actualValue == val
 			if assertion.IgnoreCase {
 				equals = strings.EqualFold(strings.ToLower(actualValue), strings.ToLower(val))
@@ -152,13 +153,15 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 				break
 			}
 		}
-		result.Expected = strings.TrimSuffix(result.Expected, ", ")
+		// Store the expected values as a string in the result
+		expectedValues = strings.TrimSuffix(expectedValues, ", ")
+		result.Expected = expectedValues
 		result.Passed = (found != assertion.Not)
 		if !result.Passed {
 			if assertion.Not {
-				result.Description = fmt.Sprintf("Expected value to not be one of [%s]", result.Expected)
+				result.Description = fmt.Sprintf("Expected value to not be one of [%s]", expectedValues)
 			} else {
-				result.Description = fmt.Sprintf("Expected value to be one of [%s], got '%s'", result.Expected, actualValue)
+				result.Description = fmt.Sprintf("Expected value to be one of [%s], got '%s'", expectedValues, actualValue)
 			}
 		}
 		
@@ -233,7 +236,7 @@ func (s *AssertionEvaluatorService) getValueFromResponse(
 				Source: "body",
 				Path:   path,
 			}
-			return s.variableExtractor.extractFromBody(response, extraction)
+			return s.variableExtractor.ExtractValue(response, extraction)
 		}
 		// Return the entire body as string
 		return string(response.Body), nil
