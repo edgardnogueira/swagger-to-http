@@ -37,10 +37,10 @@ func (s *TestRunnerService) RunTests(ctx context.Context, patterns []string, opt
 
 	// Create the test report
 	report := &models.TestReport{
-		Name:      "HTTP Tests",
-		Summary:   models.TestSummary{},
-		Results:   []models.TestResult{},
-		CreatedAt: time.Now(),
+		Name:       "HTTP Tests",
+		Summary:    models.TestSummary{},
+		Results:    []models.TestResult{},
+		CreatedAt:  time.Now(),
 		Environment: make(map[string]string),
 	}
 
@@ -124,7 +124,7 @@ func (s *TestRunnerService) RunTest(ctx context.Context, request *models.HTTPReq
 	}
 
 	// Try to load existing snapshot
-	snapshot, err := s.snapshotManager.LoadSnapshot(ctx, snapshotPath)
+	_, err = s.snapshotManager.LoadSnapshot(ctx, snapshotPath)
 	if err != nil {
 		// Snapshot doesn't exist
 		if options.UpdateSnapshots == "missing" {
