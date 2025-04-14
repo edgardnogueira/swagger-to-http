@@ -64,10 +64,10 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 	
 	// Initialize the result
 	result := &models.TestAssertionResult{
-		Type:      assertion.Type,
-		Source:    assertion.Source,
-		Path:      assertion.Path,
-		Actual:    actualValue,
+		Type:    assertion.Type,
+		Source:  assertion.Source,
+		Path:    assertion.Path,
+		Actual:  actualValue,
 	}
 	
 	// Evaluate the assertion based on its type
@@ -141,8 +141,11 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 	case "in":
 		// Check if the actual value is in the list of expected values
 		var found bool
+		// Create a string representation of the expected values
+		expectedValues := make([]string, 0, len(assertion.Values))
+		
 		for _, val := range assertion.Values {
-			result.Expected += val + ", "
+			expectedValues = append(expectedValues, val)
 			equals := actualValue == val
 			if assertion.IgnoreCase {
 				equals = strings.EqualFold(strings.ToLower(actualValue), strings.ToLower(val))
@@ -152,13 +155,16 @@ func (s *AssertionEvaluatorService) EvaluateAssertion(
 				break
 			}
 		}
-		result.Expected = strings.TrimSuffix(result.Expected, ", ")
+		
+		// Join the expected values for display
+		expectedStr := strings.Join(expectedValues, ", ")
+		result.Expected = expectedStr
 		result.Succeeded = (found != assertion.Not)
 		if !result.Succeeded {
 			if assertion.Not {
-				result.Message = fmt.Sprintf("Expected value to not be one of [%s]", result.Expected)
+				result.Message = fmt.Sprintf("Expected value to not be one of [%s]", expectedStr)
 			} else {
-				result.Message = fmt.Sprintf("Expected value to be one of [%s], got '%s'", result.Expected, actualValue)
+				result.Message = fmt.Sprintf("Expected value to be one of [%s], got '%s'", expectedStr, actualValue)
 			}
 		}
 		
@@ -233,7 +239,7 @@ func (s *AssertionEvaluatorService) getValueFromResponse(
 				Source: "body",
 				Path:   path,
 			}
-			return s.variableExtractor.extractFromBody(response, extraction)
+			return s.variableExtractor.ExtractFromBody(response, extraction)
 		}
 		// Return the entire body as string
 		return string(response.Body), nil

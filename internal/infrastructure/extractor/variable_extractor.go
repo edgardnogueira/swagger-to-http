@@ -167,7 +167,7 @@ func (s *VariableExtractorService) LoadVariables(
 func (s *VariableExtractorService) extractValue(response *models.HTTPResponse, extraction models.VariableExtraction) (string, error) {
 	switch strings.ToLower(extraction.Source) {
 	case "body":
-		return s.extractFromBody(response, extraction)
+		return s.ExtractFromBody(response, extraction)
 	case "header":
 		return s.extractFromHeader(response, extraction)
 	case "status":
@@ -177,8 +177,8 @@ func (s *VariableExtractorService) extractValue(response *models.HTTPResponse, e
 	}
 }
 
-// Extract value from response body
-func (s *VariableExtractorService) extractFromBody(response *models.HTTPResponse, extraction models.VariableExtraction) (string, error) {
+// ExtractFromBody extracts a value from the response body
+func (s *VariableExtractorService) ExtractFromBody(response *models.HTTPResponse, extraction models.VariableExtraction) (string, error) {
 	// Check if a JSON path is specified
 	if extraction.Path != "" {
 		return s.extractFromJsonPath(response.Body, extraction.Path)
