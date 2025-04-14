@@ -14,7 +14,7 @@ import (
 )
 
 // VariableExtractorService implements the VariableExtractor interface
-type VariableExtractorService struct {}
+type VariableExtractorService struct{}
 
 // NewVariableExtractorService creates a new VariableExtractorService
 func NewVariableExtractorService() *VariableExtractorService {
@@ -88,31 +88,35 @@ func (s *VariableExtractorService) ReplaceVariablesInRequest(
 	requestCopy.Path = s.ReplaceVariables(requestCopy.Path, variables, format)
 	
 	// Replace in headers
-	for name, values := range requestCopy.Headers {
-		for i, value := range values {
-			requestCopy.Headers[name][i] = s.ReplaceVariables(value, variables, format)
+	if requestCopy.Headers != nil {
+		newHeaders := make(map[string]string)
+		for name, value := range requestCopy.Headers {
+			newHeaders[name] = s.ReplaceVariables(value, variables, format)
 		}
+		requestCopy.Headers = newHeaders
 	}
 	
 	// Replace in body
 	if len(requestCopy.Body) > 0 {
-		bodyStr := string(requestCopy.Body)
-		bodyStr = s.ReplaceVariables(bodyStr, variables, format)
-		requestCopy.Body = []byte(bodyStr)
+		requestCopy.Body = s.ReplaceVariables(requestCopy.Body, variables, format)
 	}
 	
 	// Replace in form values
-	for name, values := range requestCopy.FormValues {
-		for i, value := range values {
-			requestCopy.FormValues[name][i] = s.ReplaceVariables(value, variables, format)
+	if requestCopy.FormValues != nil {
+		newFormValues := make(map[string]string)
+		for name, value := range requestCopy.FormValues {
+			newFormValues[name] = s.ReplaceVariables(value, variables, format)
 		}
+		requestCopy.FormValues = newFormValues
 	}
 	
 	// Replace in query parameters
-	for name, values := range requestCopy.QueryParams {
-		for i, value := range values {
-			requestCopy.QueryParams[name][i] = s.ReplaceVariables(value, variables, format)
+	if requestCopy.QueryParams != nil {
+		newQueryParams := make(map[string]string)
+		for name, value := range requestCopy.QueryParams {
+			newQueryParams[name] = s.ReplaceVariables(value, variables, format)
 		}
+		requestCopy.QueryParams = newQueryParams
 	}
 	
 	return &requestCopy, nil
@@ -181,16 +185,17 @@ func (s *VariableExtractorService) extractValue(response *models.HTTPResponse, e
 func (s *VariableExtractorService) extractFromBody(response *models.HTTPResponse, extraction models.VariableExtraction) (string, error) {
 	// Check if a JSON path is specified
 	if extraction.Path != "" {
-		return s.extractFromJsonPath(response.Body, extraction.Path)
+		bodyBytes := []byte(response.Body)
+		return s.extractFromJsonPath(bodyBytes, extraction.Path)
 	}
 	
 	// Check if a regular expression is specified
 	if extraction.Regexp != "" {
-		return s.extractWithRegexp(string(response.Body), extraction.Regexp)
+		return s.extractWithRegexp(response.Body, extraction.Regexp)
 	}
 	
 	// Return the entire body as a string
-	return string(response.Body), nil
+	return response.Body, nil
 }
 
 // Extract value from response header
