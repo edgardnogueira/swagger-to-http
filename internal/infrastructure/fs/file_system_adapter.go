@@ -7,7 +7,7 @@ import (
 	"github.com/edgardnogueira/swagger-to-http/internal/domain/models"
 )
 
-// FileSystemAdapter adapts the FileSystem type to implement the FileWriter interface
+// FileSystemAdapter adapts the FileSystem type to implement the SnapshotFileWriter interface
 type FileSystemAdapter struct {
 	fileWriter *FileWriter
 	fileSystem *FileSystem
