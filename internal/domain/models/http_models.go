@@ -206,30 +206,11 @@ func (r *HTTPFileRequest) Clone() *HTTPFileRequest {
 	return clone
 }
 
-// ToHTTPRequest converts an HTTPFileRequest to an HTTPRequest
-func (r *HTTPFileRequest) ToHTTPRequest() *HTTPRequest {
-	req := &HTTPRequest{
-		Method:   r.Method,
-		URL:      r.URL,
-		Body:     r.Body,
-		Name:     r.Name,
-		Path:     r.Path,
-		Tag:      r.Tag,
-		Comments: make([]string, len(r.Comments)),
-	}
-	
-	// Copy comments
-	copy(req.Comments, r.Comments)
-	
-	// Convert headers
-	if r.Headers != nil {
-		req.Headers = make(map[string]string)
-		for k, v := range r.Headers {
-			req.Headers[k] = v
-		}
-	}
-	
-	return req
+// NewHTTPFileRequestFromHTTPRequest creates a new HTTPFileRequest from an HTTPRequest
+func NewHTTPFileRequestFromHTTPRequest(req *HTTPRequest) *HTTPFileRequest {
+	fileReq := &HTTPFileRequest{}
+	fileReq.FromHTTPRequest(req)
+	return fileReq
 }
 
 // FromHTTPRequest converts an HTTPRequest to an HTTPFileRequest
@@ -258,11 +239,4 @@ func (r *HTTPFileRequest) FromHTTPRequest(req *HTTPRequest) {
 	} else {
 		r.Headers = make(map[string]string)
 	}
-}
-
-// NewHTTPFileRequestFromHTTPRequest creates a new HTTPFileRequest from an HTTPRequest
-func NewHTTPFileRequestFromHTTPRequest(req *HTTPRequest) *HTTPFileRequest {
-	fileReq := &HTTPFileRequest{}
-	fileReq.FromHTTPRequest(req)
-	return fileReq
 }
