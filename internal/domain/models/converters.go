@@ -5,63 +5,29 @@ package models
 
 // ToHTTPFileRequest converts an HTTPRequest to an HTTPFileRequest
 func (r *HTTPRequest) ToHTTPFileRequest() *HTTPFileRequest {
-	// Convert headers map to slice
-	var headers []HTTPHeader
-	for name, value := range r.Headers {
-		headers = append(headers, HTTPHeader{
-			Name:  name,
-			Value: value,
-		})
-	}
-
-	return &HTTPFileRequest{
+	// Create a new HTTPFileRequest
+	fileReq := &HTTPFileRequest{
 		Name:     r.Name,
 		Method:   r.Method,
 		URL:      r.URL,
-		Headers:  headers,
+		Headers:  make(map[string]string),
 		Body:     r.Body,
-		Comments: r.Comments,
+		Comments: make([]string, len(r.Comments)),
 		Tag:      r.Tag,
 		Path:     r.Path,
 	}
-}
-
-// ToHTTPRequest converts an HTTPFileRequest to an HTTPRequest
-func (r *HTTPFileRequest) ToHTTPRequest() *HTTPRequest {
-	// Convert headers slice to map
-	headers := make(map[string]string)
-	for _, header := range r.Headers {
-		headers[header.Name] = header.Value
-	}
-
-	// Construct authentication details if Authorization header is present
-	var auth *AuthDetails
-	if authHeader, ok := headers["Authorization"]; ok {
-		parts := splitAuthHeader(authHeader)
-		if len(parts) >= 1 {
-			authType := parts[0]
-			authValue := ""
-			if len(parts) > 1 {
-				authValue = parts[1]
-			}
-			auth = &AuthDetails{
-				Type:  authType,
-				Value: authValue,
-			}
+	
+	// Copy headers
+	if r.Headers != nil {
+		for k, v := range r.Headers {
+			fileReq.Headers[k] = v
 		}
 	}
-
-	return &HTTPRequest{
-		Method:   r.Method,
-		URL:      r.URL,
-		Headers:  headers,
-		Body:     r.Body,
-		Auth:     auth,
-		Name:     r.Name,
-		Path:     r.Path,
-		Tag:      r.Tag,
-		Comments: r.Comments,
-	}
+	
+	// Copy comments
+	copy(fileReq.Comments, r.Comments)
+	
+	return fileReq
 }
 
 // Helper function to split an Authorization header into type and value
@@ -123,27 +89,6 @@ func (r *SnapshotResult) GetRequestMethod() string {
 		return r.Diff.RequestMethod
 	}
 	return r.RequestMethod
-}
-
-// FormatHTTPHeaders converts a slice of HTTPHeader to a map of strings
-func FormatHTTPHeaders(headers []HTTPHeader) map[string]string {
-	result := make(map[string]string)
-	for _, header := range headers {
-		result[header.Name] = header.Value
-	}
-	return result
-}
-
-// ParseHTTPHeaders converts a map of strings to a slice of HTTPHeader
-func ParseHTTPHeaders(headers map[string]string) []HTTPHeader {
-	var result []HTTPHeader
-	for name, value := range headers {
-		result = append(result, HTTPHeader{
-			Name:  name,
-			Value: value,
-		})
-	}
-	return result
 }
 
 // ConvertHeadersToMap converts a slice of HTTPHeader to a map
