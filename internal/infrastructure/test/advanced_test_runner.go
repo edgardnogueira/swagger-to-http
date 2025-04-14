@@ -217,12 +217,14 @@ func (s *AdvancedTestRunnerService) RunTest(
 	
 	// If schema validation is enabled and we have a response
 	if options.ValidateSchema && result.Response != nil {
-		// Use schema validator directly without relying on SwaggerDoc from options
+		// Define a schema path
+		schemaPath := request.Path // Use request path as schema path for now
+		
+		// Validate response using the schema
 		schemaResult, err := s.schemaValidator.ValidateResponse(
 			ctx,
 			result.Response,
-			request.Path,
-			request.Method,
+			schemaPath,
 			options.ValidationOptions,
 		)
 		
