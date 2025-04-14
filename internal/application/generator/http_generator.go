@@ -12,7 +12,7 @@ import (
 
 // HTTPGenerator implements the HTTPGenerator interface
 type HTTPGenerator struct {
-	baseURL      string
+	baseURL     string
 	defaultTag   string
 	indentJSON   bool
 	includeAuth  bool
@@ -182,7 +182,7 @@ func (g *HTTPGenerator) GenerateRequest(ctx context.Context, path string, pathIt
 	}
 
 	url := g.buildURL(path)
-	headers := g.buildHeaders(operation)
+	headersMap := g.buildHeadersMap(operation)
 	body := g.buildRequestBody(operation)
 	comments := g.buildComments(operation)
 	tag := g.getTag(operation)
@@ -191,7 +191,7 @@ func (g *HTTPGenerator) GenerateRequest(ctx context.Context, path string, pathIt
 		Name:     name,
 		Method:   method,
 		URL:      url,
-		Headers:  headers,
+		Headers:  headersMap,
 		Body:     body,
 		Comments: comments,
 		Tag:      tag,
@@ -218,7 +218,23 @@ func (g *HTTPGenerator) buildURL(path string) string {
 	return baseURL + path
 }
 
-// buildHeaders builds the headers for a request
+// buildHeadersMap builds the headers map for a request
+func (g *HTTPGenerator) buildHeadersMap(operation *models.Operation) map[string]string {
+	headers := make(map[string]string)
+	
+	// Add default headers
+	headers["Content-Type"] = "application/json"
+	headers["Accept"] = "application/json"
+
+	// Add authentication header if enabled
+	if g.includeAuth && g.authToken != "" {
+		headers[g.authHeader] = g.authToken
+	}
+
+	return headers
+}
+
+// buildHeaders builds the headers for a request (legacy format)
 func (g *HTTPGenerator) buildHeaders(operation *models.Operation) []models.HTTPHeader {
 	headers := []models.HTTPHeader{
 		{Name: "Content-Type", Value: "application/json"},
