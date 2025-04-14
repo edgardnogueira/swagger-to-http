@@ -43,7 +43,7 @@ func (m *SnapshotManager) SaveSnapshot(response *models.HTTPResponse, path strin
 	}
 
 	// Write the snapshot file
-	if err := m.fileWriter.WriteFile(path, []byte(formatted), 0644); err != nil {
+	if err := m.fileWriter.WriteSnapshotFile(path, []byte(formatted), 0644); err != nil {
 		return fmt.Errorf("failed to write snapshot file: %w", err)
 	}
 
@@ -79,7 +79,7 @@ func (m *SnapshotManager) LoadSnapshot(path string, format string) (*models.HTTP
 }
 
 // CompareSnapshots compares a current response with a snapshot
-func (m *SnapshotManager) CompareSnapshots(current *models.HTTPResponse, snapshotPath string, format string) (*snapshot.ComparisonResult, error) {
+func (m *SnapshotManager) CompareSnapshots(current *models.HTTPResponse, snapshotPath string, format string) (*models.SnapshotDiff, error) {
 	// Load the snapshot
 	expected, err := m.LoadSnapshot(snapshotPath, format)
 	if err != nil {
