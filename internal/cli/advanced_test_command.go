@@ -28,23 +28,11 @@ func AddAdvancedTestCommands(
 		Long:  `Execute HTTP requests and validate responses against OpenAPI/Swagger schema definitions`,
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Get flags from parent test command
-			updateMode, _ := cmd.Flags().GetString("update")
-			ignoreHeaders, _ := cmd.Flags().GetString("ignore-headers")
-			snapshotDir, _ := cmd.Flags().GetString("snapshot-dir")
-			failOnMissing, _ := cmd.Flags().GetBool("fail-on-missing")
-			cleanup, _ := cmd.Flags().GetBool("cleanup")
-			timeoutStr, _ := cmd.Flags().GetString("timeout")
-			parallel, _ := cmd.Flags().GetBool("parallel")
-			maxConcurrent, _ := cmd.Flags().GetInt("max-concurrent")
-			stopOnFailure, _ := cmd.Flags().GetBool("stop-on-failure")
-			tags, _ := cmd.Flags().GetStringSlice("tags")
-			methods, _ := cmd.Flags().GetStringSlice("methods")
-			paths, _ := cmd.Flags().GetStringSlice("paths")
-			names, _ := cmd.Flags().GetStringSlice("names")
-			reportFormat, _ := cmd.Flags().GetString("report-format")
-			reportOutput, _ := cmd.Flags().GetString("report-output")
-			detailed, _ := cmd.Flags().GetBool("detailed")
+			// Create common test options using the same code from test_command.go
+			options, err := createTestRunOptions(cmd)
+			if err != nil {
+				return err
+			}
 
 			// Get schema validation specific flags
 			swaggerFile, _ := cmd.Flags().GetString("swagger-file")
@@ -67,17 +55,11 @@ func AddAdvancedTestCommands(
 			// Create validation options
 			validationOptions := models.ValidationOptions{
 				IgnoreAdditionalProperties: ignoreAddProps,
-				IgnoreFormats:              ignoreFormats,
+				IgnoreFormats:             ignoreFormats,
 				IgnorePatterns:             ignorePatterns,
 				RequiredPropertiesOnly:     reqPropsOnly,
 				IgnoreNullable:             ignoreNullable,
 				IgnoredProperties:          ignoredProps,
-			}
-
-			// Create common test options using the same code from test_command.go
-			options, err := createTestRunOptions(cmd)
-			if err != nil {
-				return err
 			}
 
 			// Add schema validation options
@@ -116,7 +98,7 @@ func AddAdvancedTestCommands(
 			}
 
 			// Generate report file if output path specified
-			if reportOutput != "" {
+			if reportOutput := options.ReportOptions.OutputPath; reportOutput != "" {
 				err = testReporter.SaveReport(context.Background(), report, options.ReportOptions)
 				if err != nil {
 					return fmt.Errorf("failed to save report: %w", err)
@@ -310,8 +292,8 @@ func createTestRunOptions(cmd *cobra.Command) (models.TestRunOptions, error) {
 		ContinuousMode:  watch,
 		WatchIntervalMs: watchInterval,
 		ReportOptions: models.TestReportOptions{
-			Format:            reportFormat,
-			OutputPath:        reportOutput,
+			Format:           reportFormat,
+			OutputPath:       reportOutput,
 			IncludeRequests:   detailed,
 			IncludeResponses:  detailed,
 			ColorOutput:       true,
