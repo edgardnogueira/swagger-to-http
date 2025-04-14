@@ -46,13 +46,13 @@ func (e *Executor) Execute(ctx context.Context, request *models.HTTPRequest, var
 	}
 
 	// Add headers
-	for _, header := range request.Headers {
-		req.Header.Add(header.Name, e.processVariables(header.Value, vars))
+	for name, value := range request.Headers {
+		req.Header.Add(name, e.processVariables(value, vars))
 	}
 
 	// For form submissions, ensure the right content-type if not explicitly set
 	if request.Method == "POST" && len(request.Body) > 0 {
-		if !hasHeader(request.Headers, "Content-Type") {
+		if _, ok := request.Headers["Content-Type"]; !ok {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		}
 	}
@@ -77,7 +77,7 @@ func (e *Executor) Execute(ctx context.Context, request *models.HTTPRequest, var
 		StatusCode:    resp.StatusCode,
 		Status:        resp.Status,
 		Headers:       make(map[string][]string),
-		Body:          respBody,
+		Body:          string(respBody),
 		ContentType:   resp.Header.Get("Content-Type"),
 		ContentLength: resp.ContentLength,
 		Duration:      duration,
@@ -139,15 +139,4 @@ func (e *Executor) combineVariables(requestVars map[string]string) map[string]st
 	}
 
 	return vars
-}
-
-// hasHeader checks if a specific header exists in the headers slice
-func hasHeader(headers []models.HTTPHeader, name string) bool {
-	lowerName := strings.ToLower(name)
-	for _, h := range headers {
-		if strings.ToLower(h.Name) == lowerName {
-			return true
-		}
-	}
-	return false
 }
