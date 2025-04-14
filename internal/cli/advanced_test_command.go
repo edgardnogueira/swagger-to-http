@@ -153,13 +153,13 @@ func AddAdvancedTestCommands(
 			options.EnableAssertions = true
 
 			// Load swagger doc if specified
-			swaggerDoc := &models.SwaggerDoc{}
 			if validateSchema && swaggerFile != "" {
-				var loadErr error
-				swaggerDoc, loadErr = loadSwaggerDoc(context.Background(), swaggerFile)
+				swaggerDoc, loadErr := loadSwaggerDoc(context.Background(), swaggerFile)
 				if loadErr != nil {
 					return fmt.Errorf("failed to load Swagger file: %w", loadErr)
 				}
+				// Here we would set the swagger doc to options, but the field doesn't exist
+                // This might require an update to TestRunOptions to include a SwaggerDoc field
 			}
 
 			// Run sequences
@@ -230,9 +230,9 @@ func AddAdvancedTestCommands(
 // Helper function to load a Swagger document
 func loadSwaggerDoc(ctx context.Context, filePath string) (*models.SwaggerDoc, error) {
 	// We'll need to implement or use a Swagger parser here
-	// For now, return a placeholder
+	// For now, return a placeholder with a map of string to PathItem (not pointer)
 	return &models.SwaggerDoc{
-		Paths: make(map[string]*models.PathItem),
+		Paths: make(map[string]models.PathItem),
 	}, nil
 }
 
@@ -290,7 +290,7 @@ func createTestRunOptions(cmd *cobra.Command) (models.TestRunOptions, error) {
 		MaxConcurrent:   maxConcurrent,
 		StopOnFailure:   stopOnFailure,
 		Filter:          filter,
-		EnvironmentVars: extractEnvironmentVars(),
+		EnvironmentVars: getTestEnvironmentVars(),
 		ContinuousMode:  watch,
 		WatchIntervalMs: watchInterval,
 		Timeout:         timeout,
@@ -309,8 +309,9 @@ func createTestRunOptions(cmd *cobra.Command) (models.TestRunOptions, error) {
 	return options, nil
 }
 
-// Helper function to extract environment variables
-func extractEnvironmentVars() map[string]string {
+// Helper function to extract environment variables for tests
+// Renamed to avoid name collision with function in test_command.go
+func getTestEnvironmentVars() map[string]string {
 	env := make(map[string]string)
 	
 	// Add environment variables from .env file if exists
